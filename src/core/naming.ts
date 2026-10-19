@@ -13,8 +13,10 @@ const POOL_OR_PROVIDER = /^(?!gcp-)[a-z0-9-]{4,32}$/;
 const ACCOUNT_ID = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
 const SA_EMAIL = /^([a-z][a-z0-9-]{4,28}[a-z0-9])@([a-z][a-z0-9-]{4,28}[a-z0-9])\.iam\.gserviceaccount\.com$/;
 const ANY_SA_EMAIL = /^[^@\s]+@[^@\s]+\.gserviceaccount\.com$/;
-const ROLE = /^(roles\/[A-Za-z0-9_.]+|projects\/[a-z][a-z0-9-]{4,28}[a-z0-9]\/roles\/[A-Za-z0-9_.]+|organizations\/\d+\/roles\/[A-Za-z0-9_.]+)$/;
-const PROVIDER_NAME = /^projects\/(\d+)\/locations\/global\/workloadIdentityPools\/([a-z0-9-]{4,32})\/providers\/([a-z0-9-]{4,32})$/;
+const ROLE =
+  /^(roles\/[A-Za-z0-9_.]+|projects\/[a-z][a-z0-9-]{4,28}[a-z0-9]\/roles\/[A-Za-z0-9_.]+|organizations\/\d+\/roles\/[A-Za-z0-9_.]+)$/;
+const PROVIDER_NAME =
+  /^projects\/(\d+)\/locations\/global\/workloadIdentityPools\/([a-z0-9-]{4,32})\/providers\/([a-z0-9-]{4,32})$/;
 
 const invalid = (what: string, value: string, rule: string): never => {
   throw new FirebaseWifError('INVALID_NAME', `Invalid ${what} "${value}": ${rule}.`);
@@ -35,7 +37,9 @@ export const validateRole = (value: string): string =>
   ROLE.test(value) ? value : invalid('role', value, 'expected roles/NAME or a custom role resource name');
 
 export const validateServiceAccountEmail = (value: string): string =>
-  ANY_SA_EMAIL.test(value) ? value : invalid('service account', value, 'expected an email ending in .gserviceaccount.com');
+  ANY_SA_EMAIL.test(value)
+    ? value
+    : invalid('service account', value, 'expected an email ending in .gserviceaccount.com');
 
 export const validateVariableName = (value: string): string =>
   /^[A-Za-z_][A-Za-z0-9_]*$/.test(value) && !/^GITHUB_/i.test(value)
@@ -45,7 +49,8 @@ export const validateVariableName = (value: string): string =>
 /** Accepts an account ID or a full email; returns the email. */
 export const serviceAccountEmail = (idOrEmail: string, projectId: string): string => {
   if (idOrEmail.includes('@')) return validateServiceAccountEmail(idOrEmail);
-  if (!ACCOUNT_ID.test(idOrEmail)) invalid('service account ID', idOrEmail, '6-30 lowercase letters, digits, or hyphens');
+  if (!ACCOUNT_ID.test(idOrEmail))
+    invalid('service account ID', idOrEmail, '6-30 lowercase letters, digits, or hyphens');
   return `${idOrEmail}@${projectId}.iam.gserviceaccount.com`;
 };
 
@@ -74,8 +79,7 @@ export const repoPrincipalSet = (projectNumber: string, pool: string, repoId: nu
 export const defaultComputeServiceAccount = (projectNumber: string): string =>
   `${projectNumber}-compute@developer.gserviceaccount.com`;
 
-export const managedDescription = (repo: string, repoId: number): string =>
-  `${MANAGED_MARKER} for ${repo} (${repoId})`;
+export const managedDescription = (repo: string, repoId: number): string => `${MANAGED_MARKER} for ${repo} (${repoId})`;
 
 export const desiredAttributeMapping = (): Record<string, string> => ({
   'google.subject': 'assertion.sub',

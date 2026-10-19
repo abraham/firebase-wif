@@ -17,14 +17,25 @@ describe('ghCliClient', () => {
     expect(await client.request('GET', '/repos/o/r')).toEqual({ id: 42 });
     expect(calls).toEqual([
       {
-        args: ['api', 'repos/o/r', '--method', 'GET', '-H', 'Accept: application/vnd.github+json', '-H', 'X-GitHub-Api-Version: 2022-11-28'],
+        args: [
+          'api',
+          'repos/o/r',
+          '--method',
+          'GET',
+          '-H',
+          'Accept: application/vnd.github+json',
+          '-H',
+          'X-GitHub-Api-Version: 2022-11-28',
+        ],
       },
     ]);
   });
 
   it('passes bodies on stdin and accepts empty responses', async () => {
     const { run, calls } = runner({ stdout: '' });
-    expect(await ghCliClient({ run }).request('POST', '/repos/o/r/actions/variables', { name: 'A', value: '1' })).toEqual({});
+    expect(
+      await ghCliClient({ run }).request('POST', '/repos/o/r/actions/variables', { name: 'A', value: '1' }),
+    ).toEqual({});
     expect(calls[0]!.args.slice(-2)).toEqual(['--input', '-']);
     expect(calls[0]!.input).toBe('{"name":"A","value":"1"}');
   });
@@ -48,7 +59,9 @@ describe('ghCliClient', () => {
     const missing = async () => {
       throw Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' });
     };
-    await expect(ghCliClient({ run: missing }).request('GET', '/repos/o/r')).rejects.toMatchObject({ code: 'NO_GITHUB_CREDENTIALS' });
+    await expect(ghCliClient({ run: missing }).request('GET', '/repos/o/r')).rejects.toMatchObject({
+      code: 'NO_GITHUB_CREDENTIALS',
+    });
 
     const broken = async () => {
       throw new Error('EPIPE');
@@ -58,14 +71,18 @@ describe('ghCliClient', () => {
 
   it('reports other failures without a status', async () => {
     const { run } = runner({ code: 1, stderr: '' });
-    const error = await ghCliClient({ run }).request('GET', '/repos/o/r').catch((e: unknown) => e);
+    const error = await ghCliClient({ run })
+      .request('GET', '/repos/o/r')
+      .catch((e: unknown) => e);
     expect(error).toMatchObject({ message: 'gh api exited with 1' });
     expect((error as { status?: number }).status).toBeUndefined();
   });
 
   it('runs the real gh binary by default', async () => {
     // A path gh rejects locally, so this never reaches the network.
-    const error = await ghCliClient().request('GET', '--version').catch((e: unknown) => e);
+    const error = await ghCliClient()
+      .request('GET', '--version')
+      .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(Error);
   });
 });

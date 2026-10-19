@@ -10,7 +10,9 @@ export const runtimeFor = async (
   const report = await status({ ...fakes.options, google: fakes.google, github: fakes.github });
   const repo = await fakes.github.request<RepoResource>('GET', `/repos/${fakes.options.repo}`);
   const stored = fakes.github.state.repos[fakes.options.repo]!.variables ?? {};
-  const names = report.context.variables ? [report.context.variables.provider, report.context.variables.serviceAccount] : [];
+  const names = report.context.variables
+    ? [report.context.variables.provider, report.context.variables.serviceAccount]
+    : [];
   const variableValues = new Map<string, Read<string>>(
     names.map((name) => [name, name in stored ? { kind: 'found', value: stored[name]! } : { kind: 'missing' }]),
   );

@@ -24,12 +24,21 @@ describe('types', () => {
   it('only requires the project and repo', () => {
     expectTypeOf({ projectId: 'p', repo: 'o/r' }).toExtend<Options>();
     expectTypeOf({ projectId: 'p' }).not.toExtend<Options>();
-    expectTypeOf({ projectId: 'p', repo: 'o/r', github: false as const, environment: false as const, variables: false as const }).toExtend<Options>();
+    expectTypeOf({
+      projectId: 'p',
+      repo: 'o/r',
+      github: false as const,
+      environment: false as const,
+      variables: false as const,
+    }).toExtend<Options>();
   });
 
   it('discriminates progress events', () => {
     expectTypeOf<Extract<ProgressEvent, { type: 'check' }>>().toEqualTypeOf<{ type: 'check'; check: Check }>();
-    expectTypeOf<Extract<ProgressEvent, { change: unknown }>>().toEqualTypeOf<{ type: 'change:start' | 'change:done'; change: Change }>();
+    expectTypeOf<Extract<ProgressEvent, { change: unknown }>>().toEqualTypeOf<{
+      type: 'change:start' | 'change:done';
+      change: Change;
+    }>();
   });
 
   it('reports checks with a fixed set of statuses', () => {

@@ -8,11 +8,18 @@ import { runPost } from '../../src/action/post.js';
 
 const post = async (path?: string) => {
   let stdout = '';
-  const code = await runPost({ env: path === undefined ? {} : { STATE_credentials_path: path }, stdout: (text) => (stdout += text) });
+  const code = await runPost({
+    env: path === undefined ? {} : { STATE_credentials_path: path },
+    stdout: (text) => (stdout += text),
+  });
   return { code, stdout };
 };
 
-const exists = (path: string) => access(path).then(() => true, () => false);
+const exists = (path: string) =>
+  access(path).then(
+    () => true,
+    () => false,
+  );
 
 describe('runPost', () => {
   it('deletes the credentials file', async () => {

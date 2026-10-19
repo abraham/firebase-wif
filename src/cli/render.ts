@@ -39,7 +39,10 @@ export const renderPlan = (plan: Plan, sources: Sources): string => {
   const lines = header('firebase-wif setup', ctx, sources);
   if (ctx.adopted) {
     const { variables } = ctx.adopted;
-    lines.push(`  adopt    ${ctx.adopted.provider}`, `           ${ctx.adopted.serviceAccount} (from ${variables.provider} and ${variables.serviceAccount})`);
+    lines.push(
+      `  adopt    ${ctx.adopted.provider}`,
+      `           ${ctx.adopted.serviceAccount} (from ${variables.provider} and ${variables.serviceAccount})`,
+    );
   }
   if (!changes.length) {
     lines.push('', '  Already set up.', '');
@@ -47,7 +50,8 @@ export const renderPlan = (plan: Plan, sources: Sources): string => {
   }
   const automatic = changes.filter((change) => !change.manual);
   const manual = changes.filter((change) => change.manual);
-  if (automatic.length) lines.push('', '  Changes', ...automatic.map((change) => `    ${SIGNS[change.action]} ${change.description}`));
+  if (automatic.length)
+    lines.push('', '  Changes', ...automatic.map((change) => `    ${SIGNS[change.action]} ${change.description}`));
   if (manual.length) lines.push('', '  Do by hand', ...manual.map((change) => `    - ${change.description}`));
   lines.push('');
   return lines.join('\n');

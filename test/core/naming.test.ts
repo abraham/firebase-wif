@@ -35,18 +35,29 @@ const invalid = (fn: () => unknown) => {
 describe('validators', () => {
   it('validates project IDs', () => {
     expect(validateProjectId('demo-project')).toBe('demo-project');
-    for (const bad of ['Demo-project', 'abc', '1project', 'project-', 'a'.repeat(31)]) expect(invalid(() => validateProjectId(bad)), bad).toBe(true);
+    for (const bad of ['Demo-project', 'abc', '1project', 'project-', 'a'.repeat(31)])
+      expect(
+        invalid(() => validateProjectId(bad)),
+        bad,
+      ).toBe(true);
   });
 
   it('validates repositories', () => {
     expect(validateRepo('abraham/abrah.am')).toBe('abraham/abrah.am');
-    for (const bad of ['abraham', 'a/b/c', 'a/b; rm -rf /', '../x']) expect(invalid(() => validateRepo(bad)), bad).toBe(true);
+    for (const bad of ['abraham', 'a/b/c', 'a/b; rm -rf /', '../x'])
+      expect(
+        invalid(() => validateRepo(bad)),
+        bad,
+      ).toBe(true);
   });
 
   it('validates pool and provider IDs', () => {
     expect(validatePoolOrProvider('provider', 'github-123456789')).toBe('github-123456789');
     for (const bad of ['gcp-pool', 'abc', 'a'.repeat(33), 'Upper-case']) {
-      expect(invalid(() => validatePoolOrProvider('pool', bad)), bad).toBe(true);
+      expect(
+        invalid(() => validatePoolOrProvider('pool', bad)),
+        bad,
+      ).toBe(true);
     }
   });
 
@@ -58,17 +69,27 @@ describe('validators', () => {
   });
 
   it('validates service account emails and variable names', () => {
-    expect(validateServiceAccountEmail('123-compute@developer.gserviceaccount.com')).toBe('123-compute@developer.gserviceaccount.com');
+    expect(validateServiceAccountEmail('123-compute@developer.gserviceaccount.com')).toBe(
+      '123-compute@developer.gserviceaccount.com',
+    );
     expect(invalid(() => validateServiceAccountEmail('someone@example.com'))).toBe(true);
     expect(validateVariableName('FIREBASE_WIF_PROVIDER')).toBe('FIREBASE_WIF_PROVIDER');
-    for (const bad of ['GITHUB_TOKEN', 'BAD-NAME', '1NAME']) expect(invalid(() => validateVariableName(bad)), bad).toBe(true);
+    for (const bad of ['GITHUB_TOKEN', 'BAD-NAME', '1NAME'])
+      expect(
+        invalid(() => validateVariableName(bad)),
+        bad,
+      ).toBe(true);
   });
 });
 
 describe('service accounts', () => {
   it('accepts IDs or emails', () => {
-    expect(serviceAccountEmail('github-deploy', 'demo-project')).toBe('github-deploy@demo-project.iam.gserviceaccount.com');
-    expect(serviceAccountEmail('x-y-z1@other-proj.iam.gserviceaccount.com', 'demo-project')).toBe('x-y-z1@other-proj.iam.gserviceaccount.com');
+    expect(serviceAccountEmail('github-deploy', 'demo-project')).toBe(
+      'github-deploy@demo-project.iam.gserviceaccount.com',
+    );
+    expect(serviceAccountEmail('x-y-z1@other-proj.iam.gserviceaccount.com', 'demo-project')).toBe(
+      'x-y-z1@other-proj.iam.gserviceaccount.com',
+    );
     expect(invalid(() => serviceAccountEmail('ab', 'demo-project'))).toBe(true);
   });
 
@@ -91,7 +112,9 @@ describe('resource names', () => {
     const name = providerName('123', 'github', 'github-42');
     expect(name).toBe('projects/123/locations/global/workloadIdentityPools/github/providers/github-42');
     expect(parseProviderName(name)).toEqual({ projectNumber: '123', pool: 'github', provider: 'github-42' });
-    expect(parseProviderName('projects/demo/locations/global/workloadIdentityPools/github/providers/x-y-z')).toBeUndefined();
+    expect(
+      parseProviderName('projects/demo/locations/global/workloadIdentityPools/github/providers/x-y-z'),
+    ).toBeUndefined();
     expect(parseProviderName('')).toBeUndefined();
   });
 
@@ -104,7 +127,9 @@ describe('resource names', () => {
 
 describe('provider configuration', () => {
   it('pins the repository and owner IDs', () => {
-    expect(desiredAttributeCondition(42, 7)).toBe("assertion.repository_id == '42' && assertion.repository_owner_id == '7'");
+    expect(desiredAttributeCondition(42, 7)).toBe(
+      "assertion.repository_id == '42' && assertion.repository_owner_id == '7'",
+    );
   });
 
   it('maps every required attribute', () => {

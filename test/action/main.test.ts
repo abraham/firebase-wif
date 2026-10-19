@@ -40,11 +40,15 @@ const runner = async (inputs: Record<string, string> = {}, extraEnv: NodeJS.Proc
     if (url.startsWith('https://pipelines.')) return new Response(JSON.stringify({ value: 'SENTINEL-jwt' }));
     if (url.startsWith('https://sts.')) return new Response(JSON.stringify({ access_token: 'SENTINEL-federated' }));
     const status = Number(extraEnv.FAKE_IMPERSONATION_STATUS || 200);
-    return new Response(JSON.stringify(status === 200 ? { accessToken: 'SENTINEL-sa' } : { error: { message: 'denied' } }), { status });
+    return new Response(
+      JSON.stringify(status === 200 ? { accessToken: 'SENTINEL-sa' } : { error: { message: 'denied' } }),
+      { status },
+    );
   }) as typeof globalThis.fetch;
   let stdout = '';
   const read = (name: 'output' | 'env' | 'state') => readFile(join(root, name), 'utf8').catch(() => '');
-  const run = async () => runMain({ env, fetch, stdout: (text) => (stdout += text), cwd: workspace, randomId: () => 'abc' });
+  const run = async () =>
+    runMain({ env, fetch, stdout: (text) => (stdout += text), cwd: workspace, randomId: () => 'abc' });
   return { root, workspace, temp, env, urls, read, run, stdout: () => stdout };
 };
 
@@ -99,7 +103,10 @@ describe('runMain', () => {
   it('reads .firebaserc from working_directory', async () => {
     const action = await runner({ working_directory: 'site', verify: 'false' });
     await mkdir(join(action.workspace, 'site'));
-    await writeFile(join(action.workspace, 'site', '.firebaserc'), JSON.stringify({ projects: { default: 'site-project' } }));
+    await writeFile(
+      join(action.workspace, 'site', '.firebaserc'),
+      JSON.stringify({ projects: { default: 'site-project' } }),
+    );
     await action.run();
     expect(commands(await action.read('output')).project_id).toBe('site-project');
   });
@@ -122,7 +129,10 @@ describe('runMain', () => {
   });
 
   it.each([
-    [{ GITHUB_SERVER_URL: 'https://github.example.com' }, 'Only github.com is supported; GitHub Enterprise Server is not.'],
+    [
+      { GITHUB_SERVER_URL: 'https://github.example.com' },
+      'Only github.com is supported; GitHub Enterprise Server is not.',
+    ],
     [{ ACTIONS_ID_TOKEN_REQUEST_TOKEN: '' }, 'Missing OIDC token. Add `permissions: id-token: write` to the job.'],
     [{ INPUT_SERVICE_ACCOUNT: '' }, 'Input required and not supplied: service_account'],
     [{ INPUT_WORKLOAD_IDENTITY_PROVIDER: 'github' }, 'Invalid workload identity provider "github".'],
@@ -146,10 +156,14 @@ describe('runMain', () => {
 describe('dist/action/main.js', () => {
   it('runs as the bundled entry point', async () => {
     const action = await runner({ verify: 'false' });
-    const { stdout } = await promisify(execFile)(process.execPath, [join(import.meta.dirname, '../../dist/action/main.js')], {
-      env: action.env,
-      cwd: action.workspace,
-    });
+    const { stdout } = await promisify(execFile)(
+      process.execPath,
+      [join(import.meta.dirname, '../../dist/action/main.js')],
+      {
+        env: action.env,
+        cwd: action.workspace,
+      },
+    );
     expect(stdout).toContain(`::add-mask::${REQUEST_TOKEN}`);
     expect(commands(await action.read('output')).service_account).toBe(SA);
   });

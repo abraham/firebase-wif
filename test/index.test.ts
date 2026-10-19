@@ -85,7 +85,9 @@ describe('library contract', () => {
   it('only reads the filesystem in context resolution', async () => {
     const dir = join(import.meta.dirname, '../src');
     // The Action isn't part of the library; it writes the credentials file by design.
-    const files = (await readdir(dir, { recursive: true })).filter((file) => file.endsWith('.ts') && !file.startsWith('action'));
+    const files = (await readdir(dir, { recursive: true })).filter(
+      (file) => file.endsWith('.ts') && !file.startsWith('action'),
+    );
     const readers = [];
     for (const file of files) {
       if (/from 'node:fs/.test(await readFile(join(dir, file), 'utf8'))) readers.push(file);

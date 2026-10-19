@@ -35,14 +35,19 @@ describe('createFakeGitHub', () => {
     expect(await github.request('GET', '/repos/o/r/actions/variables/A')).toEqual({ name: 'A', value: '1' });
     await expect(github.request('GET', '/repos/o/r/actions/variables/B')).rejects.toMatchObject({ status: 404 });
     await github.request('POST', '/repos/o/r/actions/variables', { name: 'B', value: '2' });
-    await expect(github.request('POST', '/repos/o/r/actions/variables', { name: 'B', value: '3' })).rejects.toMatchObject({ status: 409 });
+    await expect(
+      github.request('POST', '/repos/o/r/actions/variables', { name: 'B', value: '3' }),
+    ).rejects.toMatchObject({ status: 409 });
     await github.request('PATCH', '/repos/o/r/actions/variables/A', { name: 'A', value: '9' });
     expect(github.state.repos['o/r']!.variables).toEqual({ A: '9', B: '2' });
   });
 
   it('lists secrets and the OIDC sub template, ignoring query strings', async () => {
     const github = fake();
-    expect(await github.request('GET', '/repos/o/r/actions/secrets?per_page=100')).toEqual({ total_count: 1, secrets: [{ name: 'S' }] });
+    expect(await github.request('GET', '/repos/o/r/actions/secrets?per_page=100')).toEqual({
+      total_count: 1,
+      secrets: [{ name: 'S' }],
+    });
     expect(await github.request('GET', '/repos/o/r/actions/oidc/customization/sub')).toEqual({ use_default: true });
   });
 
@@ -62,9 +67,14 @@ describe('createFakeGitHub', () => {
       branch_policies: [{ name: 'main', type: 'branch' }],
     });
     await github.request('PUT', '/repos/o/r/environments/staging%20env', {});
-    expect(github.state.repos['o/r']!.environments!['staging env']).toEqual({ deployment_branch_policy: null, branchPolicies: [] });
+    expect(github.state.repos['o/r']!.environments!['staging env']).toEqual({
+      deployment_branch_policy: null,
+      branchPolicies: [],
+    });
     await expect(github.request('GET', '/repos/o/r/environments/missing')).rejects.toMatchObject({ status: 404 });
-    await expect(github.request('GET', '/repos/o/r/environments/missing/deployment-branch-policies')).rejects.toMatchObject({ status: 404 });
+    await expect(
+      github.request('GET', '/repos/o/r/environments/missing/deployment-branch-policies'),
+    ).rejects.toMatchObject({ status: 404 });
   });
 
   it('reports protection rules and replaces the ones a PUT leaves out', async () => {
@@ -81,7 +91,11 @@ describe('createFakeGitHub', () => {
       ],
     });
     await github.request('PUT', '/repos/o/r/environments/production', { wait_timer: 5 });
-    expect(github.state.repos['o/r']!.environments!.production).toEqual({ deployment_branch_policy: null, branchPolicies: [], waitTimer: 5 });
+    expect(github.state.repos['o/r']!.environments!.production).toEqual({
+      deployment_branch_policy: null,
+      branchPolicies: [],
+      waitTimer: 5,
+    });
   });
 
   it('answers 403 for forbidden paths and records calls', async () => {

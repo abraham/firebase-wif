@@ -65,11 +65,15 @@ const credsIgnored: Advisory = {
     const problems: string[] = [];
     if (!rt.local.gitignore?.includes('gha-creds-')) problems.push('.gitignore');
     const exposed = publicDirs(rt.local.firebaseJson).filter(
-      (site) => ['.', './', ''].includes(site.public ?? '') && !site.ignore?.some((glob) => glob.includes('gha-creds-')),
+      (site) =>
+        ['.', './', ''].includes(site.public ?? '') && !site.ignore?.some((glob) => glob.includes('gha-creds-')),
     );
     if (exposed.length) problems.push('the Hosting ignore list (public is the repo root)');
     return problems.length
-      ? warn(`gha-creds-*.json from google-github-actions/auth isn't excluded from ${problems.join(' or ')}`, 'Add gha-creds-*.json there, or switch to abraham/firebase-wif.')
+      ? warn(
+          `gha-creds-*.json from google-github-actions/auth isn't excluded from ${problems.join(' or ')}`,
+          'Add gha-creds-*.json there, or switch to abraham/firebase-wif.',
+        )
       : pass('gha-creds-*.json is excluded');
   },
 };
@@ -86,7 +90,10 @@ const operator: Advisory = {
   async run(rt) {
     const missing = rt.preflight.missingPermissions;
     return missing.length
-      ? warn(`you're missing ${missing.join(', ')}, so setup can't run`, 'Ask a project owner to run firebase-wif setup.')
+      ? warn(
+          `you're missing ${missing.join(', ')}, so setup can't run`,
+          'Ask a project owner to run firebase-wif setup.',
+        )
       : pass('you can run setup');
   },
 };
@@ -95,11 +102,15 @@ const serviceAccountKeys: Advisory = {
   id: 'gcp.sa-keys',
   async run(rt) {
     const account = await readServiceAccount(rt);
-    if (account.kind !== 'found') return skipped(account.kind === 'missing' ? "service account doesn't exist yet" : account.reason);
+    if (account.kind !== 'found')
+      return skipped(account.kind === 'missing' ? "service account doesn't exist yet" : account.reason);
     const keys = await readServiceAccountKeys(rt);
     if (keys.kind !== 'found') return skipped(keys.kind === 'missing' ? 'service account not found' : keys.reason);
     return keys.value.length
-      ? warn(`${keys.value.length} user-managed key${keys.value.length === 1 ? '' : 's'} on ${rt.ctx.serviceAccount}`, 'Delete the keys once deploys use WIF.')
+      ? warn(
+          `${keys.value.length} user-managed key${keys.value.length === 1 ? '' : 's'} on ${rt.ctx.serviceAccount}`,
+          'Delete the keys once deploys use WIF.',
+        )
       : pass('no user-managed keys');
   },
 };
@@ -109,7 +120,9 @@ const extraRoles: Advisory = {
   async run(rt) {
     const policy = await readProjectPolicy(rt);
     if (policy.kind !== 'found') return skipped(policy.kind === 'missing' ? 'project policy not found' : policy.reason);
-    const extra = rolesOf(policy.value, `serviceAccount:${rt.ctx.serviceAccount}`).filter((role) => !rt.ctx.roles.includes(role));
+    const extra = rolesOf(policy.value, `serviceAccount:${rt.ctx.serviceAccount}`).filter(
+      (role) => !rt.ctx.roles.includes(role),
+    );
     if (!extra.length) return pass('no roles beyond the requested ones');
     const account = await readServiceAccount(rt);
     const managed = account.kind === 'found' && account.value.description?.includes(MANAGED_MARKER);
@@ -125,16 +138,21 @@ const broadImpersonation: Advisory = {
   id: 'gcp.wi-user-broad',
   async run(rt) {
     const account = await readServiceAccount(rt);
-    if (account.kind !== 'found') return skipped(account.kind === 'missing' ? "service account doesn't exist yet" : account.reason);
+    if (account.kind !== 'found')
+      return skipped(account.kind === 'missing' ? "service account doesn't exist yet" : account.reason);
     const policy = await readServiceAccountPolicy(rt, rt.ctx.serviceAccount);
-    if (policy.kind !== 'found') return skipped(policy.kind === 'missing' ? 'service account not found' : policy.reason);
+    if (policy.kind !== 'found')
+      return skipped(policy.kind === 'missing' ? 'service account not found' : policy.reason);
     const ours = repoPrincipal(rt.ctx);
     const broad = (policy.value.bindings ?? [])
       .filter((binding) => IMPERSONATION_ROLES.includes(binding.role))
       .flatMap((binding) => binding.members ?? [])
       .filter((member) => /^principal(Set)?:\/\//.test(member) && member !== ours);
     return broad.length
-      ? warn(`other identities can act as ${rt.ctx.serviceAccount}: ${[...new Set(broad)].join(', ')}`, 'Remove the grants unless they are intended.')
+      ? warn(
+          `other identities can act as ${rt.ctx.serviceAccount}: ${[...new Set(broad)].join(', ')}`,
+          'Remove the grants unless they are intended.',
+        )
       : pass('only this repository can act as the service account');
   },
 };
@@ -146,7 +164,10 @@ const repo: Advisory = {
     if (!rt.github) return pass(`${message}; GitHub checks skipped without credentials`);
     return rt.repo.permissions?.admin
       ? pass(message)
-      : warn(`${message}; you aren't a repo admin, so setup can't change variables or environments`, 'Ask a repo admin to run firebase-wif setup.');
+      : warn(
+          `${message}; you aren't a repo admin, so setup can't change variables or environments`,
+          'Ask a repo admin to run firebase-wif setup.',
+        );
   },
 };
 
@@ -159,7 +180,9 @@ const legacySecrets: Advisory = {
       github.request<{ secrets?: { name: string }[] }>('GET', `/repos/${rt.ctx.repo}/actions/secrets?per_page=100`),
     );
     if (secrets.kind !== 'found') return skipped(secrets.kind === 'missing' ? 'secrets not found' : secrets.reason);
-    const legacy = (secrets.value.secrets ?? []).map((secret) => secret.name).filter((name) => LEGACY_SECRET.test(name));
+    const legacy = (secrets.value.secrets ?? [])
+      .map((secret) => secret.name)
+      .filter((name) => LEGACY_SECRET.test(name));
     return legacy.length
       ? warn(`${legacy.join(', ')} still set`, 'Delete the secrets once deploys use WIF.')
       : pass('no service account key or token secrets');
@@ -194,7 +217,10 @@ const oidcSub: Advisory = {
     const kind = useDefault ? 'default sub template' : `customized sub (${value.include_claim_keys!.join(', ')})`;
     const summary = `${kind}; longest sub is about ${estimate.bytes} bytes`;
     return estimate.bytes > GOOGLE_SUBJECT_MAX_BYTES
-      ? warn(`${summary}, over the ${GOOGLE_SUBJECT_MAX_BYTES}-byte google.subject limit`, 'Use shorter branch/environment names or fewer sub claims.')
+      ? warn(
+          `${summary}, over the ${GOOGLE_SUBJECT_MAX_BYTES}-byte google.subject limit`,
+          'Use shorter branch/environment names or fewer sub claims.',
+        )
       : pass(summary);
   },
 };

@@ -43,11 +43,18 @@ const triggers = (on: unknown): string[] => {
 
 const grantsIdToken = (permissions: unknown) =>
   permissions === 'write-all' ||
-  (typeof permissions === 'object' && permissions !== null && (permissions as Record<string, unknown>)['id-token'] === 'write');
+  (typeof permissions === 'object' &&
+    permissions !== null &&
+    (permissions as Record<string, unknown>)['id-token'] === 'write');
 
 /** Finds jobs that deploy to Firebase and checks they can mint OIDC tokens safely. */
 export const analyzeWorkflows = (workflows: Record<string, string>): WorkflowAnalysis => {
-  const analysis: WorkflowAnalysis = { deployJobs: 0, findings: [], writesCredentialsToWorkspace: false, parseErrors: [] };
+  const analysis: WorkflowAnalysis = {
+    deployJobs: 0,
+    findings: [],
+    writesCredentialsToWorkspace: false,
+    parseErrors: [],
+  };
 
   for (const [file, text] of Object.entries(workflows)) {
     let doc: { on?: unknown; permissions?: unknown; jobs?: Record<string, Job> } | null;
@@ -62,9 +69,16 @@ export const analyzeWorkflows = (workflows: Record<string, string>): WorkflowAna
     const onPullRequest = triggers(doc.on).some((name) => name === 'pull_request' || name === 'pull_request_target');
 
     for (const [name, job] of Object.entries(doc.jobs ?? {})) {
-      const steps = Array.isArray(job?.steps) ? (job.steps as Step[]).filter((step) => step && typeof step === 'object') : [];
+      const steps = Array.isArray(job?.steps)
+        ? (job.steps as Step[]).filter((step) => step && typeof step === 'object')
+        : [];
 
-      if (steps.some((step) => usesAction(step, ['google-github-actions/auth']) && String(step.with?.create_credentials_file) !== 'false')) {
+      if (
+        steps.some(
+          (step) =>
+            usesAction(step, ['google-github-actions/auth']) && String(step.with?.create_credentials_file) !== 'false',
+        )
+      ) {
         analysis.writesCredentialsToWorkspace = true;
       }
 

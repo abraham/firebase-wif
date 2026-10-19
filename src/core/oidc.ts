@@ -20,7 +20,13 @@ const bytes = (value: string) => Buffer.byteLength(value, 'utf8');
 /** Estimates the `sub` claim GitHub mints for branch, environment, and pull request jobs. */
 export const estimateSub = (
   template: SubTemplate,
-  { repo, repoId, ownerId, branch, environment }: {
+  {
+    repo,
+    repoId,
+    ownerId,
+    branch,
+    environment,
+  }: {
     repo: string;
     repoId: number;
     ownerId: number;
@@ -28,11 +34,7 @@ export const estimateSub = (
     environment?: string;
   },
 ): SubEstimate => {
-  const contexts = [
-    `ref:refs/heads/${branch}`,
-    'pull_request',
-    ...(environment ? [`environment:${environment}`] : []),
-  ];
+  const contexts = [`ref:refs/heads/${branch}`, 'pull_request', ...(environment ? [`environment:${environment}`] : [])];
 
   const render = (context: string): string => {
     if (template.useDefault || !template.includeClaimKeys.length) return `repo:${repo}:${context}`;

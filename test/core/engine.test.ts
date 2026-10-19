@@ -31,7 +31,9 @@ const check = (report: StatusReport, id: string) => {
 const expectConsistent = (report: StatusReport) => {
   for (const c of report.checks.filter((c) => RESOURCE_IDS.includes(c.id))) {
     const changes = report.changes.filter((change) => change.resource === c.id && !change.manual);
-    expect(['fail', 'warn'].includes(c.status), `${c.id}: ${c.status} with ${changes.length} changes`).toBe(changes.length > 0);
+    expect(['fail', 'warn'].includes(c.status), `${c.id}: ${c.status} with ${changes.length} changes`).toBe(
+      changes.length > 0,
+    );
   }
   expect(report.ok).toBe(!report.checks.some((c) => c.status === 'fail'));
 };
@@ -47,7 +49,9 @@ describe('status', () => {
 
     expect(report.ok).toBe(true);
     expect(report.changes).toEqual([]);
-    expect(report.checks.filter((c) => c.status !== 'pass' && !c.id.startsWith('local.')).map((c) => c.id)).toEqual(['gh.workflows']);
+    expect(report.checks.filter((c) => c.status !== 'pass' && !c.id.startsWith('local.')).map((c) => c.id)).toEqual([
+      'gh.workflows',
+    ]);
     expect(report.context).toMatchObject({
       projectNumber: '123456789012',
       repoId: 987654321,
@@ -58,10 +62,16 @@ describe('status', () => {
       environment: { name: 'production', branch: 'main' },
     });
     expect(report.preflight).toEqual({ missingPermissions: [], githubAdmin: true });
-    expect(fakes.google.calls).toContainEqual(expect.objectContaining({ body: { permissions: [...SETUP_PERMISSIONS] } }));
+    expect(fakes.google.calls).toContainEqual(
+      expect.objectContaining({ body: { permissions: [...SETUP_PERMISSIONS] } }),
+    );
     expectConsistent(report);
     // Status only reads.
-    expect([...fakes.google.calls, ...fakes.github.calls].filter((c) => /setIamPolicy|PATCH|PUT/.test(`${c.method} ${c.url}`))).toEqual([]);
+    expect(
+      [...fakes.google.calls, ...fakes.github.calls].filter((c) =>
+        /setIamPolicy|PATCH|PUT/.test(`${c.method} ${c.url}`),
+      ),
+    ).toEqual([]);
   });
 
   it('plans everything for an empty project', async () => {
@@ -104,7 +114,10 @@ describe('status', () => {
     const report = await run(fakes);
     expect(check(report, 'gcp.apis')).toMatchObject({ status: 'fail', message: 'enable iam.googleapis.com' });
     for (const id of ['gcp.pool', 'gcp.provider', 'gcp.service-account', 'gcp.wi-user']) {
-      expect(check(report, id)).toMatchObject({ status: 'skipped', message: expect.stringContaining('blocked by gcp.apis') });
+      expect(check(report, id)).toMatchObject({
+        status: 'skipped',
+        message: expect.stringContaining('blocked by gcp.apis'),
+      });
     }
     expectConsistent(report);
   });
@@ -115,7 +128,10 @@ describe('status', () => {
     fakes.google.state.providers[fakes.names.provider]!.state = 'DELETED';
 
     const report = await run(fakes);
-    expect(report.changes.map((c) => `${c.resource} ${c.action}`)).toEqual(['gcp.pool undelete', 'gcp.provider undelete']);
+    expect(report.changes.map((c) => `${c.resource} ${c.action}`)).toEqual([
+      'gcp.pool undelete',
+      'gcp.provider undelete',
+    ]);
     expectConsistent(report);
   });
 
@@ -145,7 +161,10 @@ describe('status', () => {
     fakes.google.state.providers[fakes.names.provider]!.attributeCondition = "assertion.repository_id == '1'";
 
     const report = await run(fakes);
-    expect(check(report, 'gcp.provider-condition')).toMatchObject({ status: 'fail', fix: expect.stringContaining('--provider') });
+    expect(check(report, 'gcp.provider-condition')).toMatchObject({
+      status: 'fail',
+      fix: expect.stringContaining('--provider'),
+    });
     await expect(plan({ ...fakes.options, google: fakes.google, github: fakes.github })).rejects.toMatchObject({
       code: 'PROVIDER_OWNED_BY_OTHER_REPO',
     });
@@ -154,14 +173,23 @@ describe('status', () => {
   it('refuses providers for other issuers', async () => {
     const fakes = createConfiguredFakes();
     fakes.google.state.providers[fakes.names.provider]!.oidc = { issuerUri: 'https://gitlab.com' };
-    expect(check(await run(fakes), 'gcp.provider')).toMatchObject({ status: 'fail', message: expect.stringContaining('gitlab.com') });
+    expect(check(await run(fakes), 'gcp.provider')).toMatchObject({
+      status: 'fail',
+      message: expect.stringContaining('gitlab.com'),
+    });
   });
 
   it('notices missing mappings, roles, and bindings', async () => {
     const fakes = createConfiguredFakes();
     fakes.google.state.providers[fakes.names.provider]!.attributeMapping = { 'google.subject': 'assertion.sub' };
     fakes.google.state.projects[0]!.iamPolicy = {
-      bindings: [{ role: 'roles/firebasehosting.admin', members: [`serviceAccount:${fakes.names.serviceAccount}`], condition: { expression: 'false' } }],
+      bindings: [
+        {
+          role: 'roles/firebasehosting.admin',
+          members: [`serviceAccount:${fakes.names.serviceAccount}`],
+          condition: { expression: 'false' },
+        },
+      ],
     };
     fakes.google.state.serviceAccounts[fakes.names.serviceAccount]!.iamPolicy = { bindings: [] };
     fakes.google.state.serviceAccounts[fakes.names.serviceAccount]!.disabled = true;
@@ -182,8 +210,18 @@ describe('status', () => {
     fakes.github.state.forbidden = ['/actions/'];
 
     const report = await run(fakes);
-    for (const id of ['gcp.service-account', 'gcp.wi-user', 'gcp.sa-keys', 'gh.variables', 'gh.legacy-secrets', 'gh.oidc-sub']) {
-      expect(check(report, id), id).toMatchObject({ status: 'skipped', message: expect.stringContaining('insufficient permission') });
+    for (const id of [
+      'gcp.service-account',
+      'gcp.wi-user',
+      'gcp.sa-keys',
+      'gh.variables',
+      'gh.legacy-secrets',
+      'gh.oidc-sub',
+    ]) {
+      expect(check(report, id), id).toMatchObject({
+        status: 'skipped',
+        message: expect.stringContaining('insufficient permission'),
+      });
     }
     expectConsistent(report);
   });
@@ -194,7 +232,9 @@ describe('status', () => {
     account.keys = ['abc'];
     account.iamPolicy!.bindings!.push({
       role: 'roles/iam.workloadIdentityUser',
-      members: ['principalSet://iam.googleapis.com/projects/123456789012/locations/global/workloadIdentityPools/github/*'],
+      members: [
+        'principalSet://iam.googleapis.com/projects/123456789012/locations/global/workloadIdentityPools/github/*',
+      ],
     });
     fakes.google.state.projects[0]!.iamPolicy.bindings!.push({
       role: 'roles/firebase.admin',
@@ -209,7 +249,10 @@ describe('status', () => {
     expect(report.ok).toBe(true);
     expect(check(report, 'gcp.sa-keys').status).toBe('warn');
     expect(check(report, 'gcp.extra-roles')).toMatchObject({ status: 'warn', fix: 'firebase-wif setup --prune' });
-    expect(check(report, 'gcp.wi-user-broad')).toMatchObject({ status: 'warn', message: expect.stringContaining('/github/*') });
+    expect(check(report, 'gcp.wi-user-broad')).toMatchObject({
+      status: 'warn',
+      message: expect.stringContaining('/github/*'),
+    });
     expect(check(report, 'gcp.operator').status).toBe('warn');
     expect(report.preflight.missingPermissions).toHaveLength(8);
     expect(report.preflight.githubAdmin).toBe(false);
@@ -256,7 +299,12 @@ describe('status', () => {
     const report = await run(fakes, { github: false });
     expect(check(report, 'gh.variables').status).toBe('skipped');
     expect(report.changes.every((c) => c.manual)).toBe(true);
-    expect(report.changes.map((c) => c.resource)).toEqual(['gh.variables', 'gh.variables', 'gh.environment', 'gh.environment']);
+    expect(report.changes.map((c) => c.resource)).toEqual([
+      'gh.variables',
+      'gh.variables',
+      'gh.environment',
+      'gh.environment',
+    ]);
     expect(report.preflight.githubAdmin).toBeUndefined();
   });
 
@@ -267,14 +315,24 @@ describe('status', () => {
         firebaseJson: { hosting: { public: '.' } },
         firebaserc: { projects: { default: 'other-project' } },
         workflows: {
-          'deploy.yml': 'on: push\njobs:\n  deploy:\n    steps:\n      - uses: google-github-actions/auth@v3\n      - run: npx firebase deploy\n',
+          'deploy.yml':
+            'on: push\njobs:\n  deploy:\n    steps:\n      - uses: google-github-actions/auth@v3\n      - run: npx firebase deploy\n',
         },
       },
     });
     expect(check(report, 'local.firebase-json').status).toBe('pass');
-    expect(check(report, 'local.project-match')).toMatchObject({ status: 'warn', message: expect.stringContaining('other-project') });
-    expect(check(report, 'local.creds-ignored')).toMatchObject({ status: 'warn', message: expect.stringContaining('.gitignore') });
-    expect(check(report, 'gh.workflows')).toMatchObject({ status: 'warn', message: expect.stringContaining('id-token') });
+    expect(check(report, 'local.project-match')).toMatchObject({
+      status: 'warn',
+      message: expect.stringContaining('other-project'),
+    });
+    expect(check(report, 'local.creds-ignored')).toMatchObject({
+      status: 'warn',
+      message: expect.stringContaining('.gitignore'),
+    });
+    expect(check(report, 'gh.workflows')).toMatchObject({
+      status: 'warn',
+      message: expect.stringContaining('id-token'),
+    });
   });
 
   it('emits a check event per check', async () => {
@@ -358,7 +416,10 @@ describe('setup', () => {
       description: 'Managed by firebase-wif for octo-org/site (987654321)',
     });
     const repo = fakes.github.state.repos['octo-org/site']!;
-    expect(repo.variables).toEqual({ FIREBASE_WIF_PROVIDER: fakes.names.provider, FIREBASE_WIF_SERVICE_ACCOUNT: fakes.names.serviceAccount });
+    expect(repo.variables).toEqual({
+      FIREBASE_WIF_PROVIDER: fakes.names.provider,
+      FIREBASE_WIF_SERVICE_ACCOUNT: fakes.names.serviceAccount,
+    });
     expect(repo.environments!.production).toEqual({
       deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
       branchPolicies: ['main'],
@@ -408,7 +469,9 @@ describe('setup', () => {
       'gcp.provider-condition update',
       'gcp.service-account enable',
     ]);
-    expect(fakes.google.state.providers[fakes.names.provider]!.attributeCondition).toBe(desiredAttributeCondition(987654321, 1234567));
+    expect(fakes.google.state.providers[fakes.names.provider]!.attributeCondition).toBe(
+      desiredAttributeCondition(987654321, 1234567),
+    );
     expect(result.status.ok).toBe(true);
   });
 
@@ -423,7 +486,9 @@ describe('setup', () => {
       { role: 'roles/viewer', members: ['user:a@example.com'] },
       { role: 'roles/iam.serviceAccountUser', members: [`serviceAccount:${fakes.names.serviceAccount}`] },
     ]);
-    expect(fakes.google.state.projects[0]!.iamPolicy.bindings!.map((b) => b.role)).not.toContain('roles/iam.serviceAccountUser');
+    expect(fakes.google.state.projects[0]!.iamPolicy.bindings!.map((b) => b.role)).not.toContain(
+      'roles/iam.serviceAccountUser',
+    );
   });
 
   it('keeps conditional bindings, other members, and the policy version', async () => {
@@ -495,7 +560,10 @@ describe('setup', () => {
     const fakes = createConfiguredFakes();
     fakes.google.state.serviceAccounts[fakes.names.serviceAccount]!.iamPolicy = { bindings: [] };
     fakes.google.state.failures = [{ url: ':setIamPolicy', status: 409, times: 6 }];
-    await expect(setupWith(fakes)).rejects.toMatchObject({ code: 'APPLY_FAILED', details: { failed: { resource: 'gcp.wi-user' } } });
+    await expect(setupWith(fakes)).rejects.toMatchObject({
+      code: 'APPLY_FAILED',
+      details: { failed: { resource: 'gcp.wi-user' } },
+    });
   });
 
   it('polls long-running operations and times out after 60 seconds', async () => {
@@ -528,7 +596,9 @@ describe('setup', () => {
     fakes.google.state.pendingPolls = 5;
     const controller = new AbortController();
 
-    await expect(setupWith(fakes, { signal: controller.signal, sleep: async () => controller.abort() })).rejects.toMatchObject({
+    await expect(
+      setupWith(fakes, { signal: controller.signal, sleep: async () => controller.abort() }),
+    ).rejects.toMatchObject({
       name: 'AbortError',
     });
     expect(fakes.google.calls.filter((c) => c.url.includes('/operations/'))).toEqual([]);
@@ -564,7 +634,10 @@ describe('setup', () => {
   it('leaves an unmanaged account alone when pruning', async () => {
     const fakes = createConfiguredFakes();
     fakes.google.state.serviceAccounts[fakes.names.serviceAccount]!.description = 'made by hand';
-    fakes.google.state.projects[0]!.iamPolicy.bindings!.push({ role: 'roles/editor', members: [`serviceAccount:${fakes.names.serviceAccount}`] });
+    fakes.google.state.projects[0]!.iamPolicy.bindings!.push({
+      role: 'roles/editor',
+      members: [`serviceAccount:${fakes.names.serviceAccount}`],
+    });
 
     const result = applied(await setupWith(fakes, { prune: true }));
     expect(result.applied).toEqual([]);
@@ -623,11 +696,19 @@ describe('setup', () => {
   it('preserves environment reviewers and wait timers', async () => {
     const fakes = createConfiguredFakes();
     fakes.github.state.repos['octo-org/site']!.environments = {
-      production: { deployment_branch_policy: null, branchPolicies: ['release'], waitTimer: 30, reviewers: [{ type: 'User', id: 1 }] },
+      production: {
+        deployment_branch_policy: null,
+        branchPolicies: ['release'],
+        waitTimer: 30,
+        reviewers: [{ type: 'User', id: 1 }],
+      },
     };
 
     const result = applied(await setupWith(fakes));
-    expect(result.applied.map((c) => c.description)).toEqual(['limit production to selected branches', 'allow main to deploy to production']);
+    expect(result.applied.map((c) => c.description)).toEqual([
+      'limit production to selected branches',
+      'allow main to deploy to production',
+    ]);
     expect(fakes.github.state.repos['octo-org/site']!.environments!.production).toEqual({
       deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
       branchPolicies: ['release', 'main'],
@@ -667,16 +748,25 @@ describe('setup', () => {
 
   it('adopts a legacy setup only when asked', async () => {
     const fakes = createConfiguredFakes();
-    const legacyProvider = 'projects/123456789012/locations/global/workloadIdentityPools/github/providers/github-actions';
+    const legacyProvider =
+      'projects/123456789012/locations/global/workloadIdentityPools/github/providers/github-actions';
     const legacyAccount = 'github-deploy@demo-project.iam.gserviceaccount.com';
     const principal = fakes.names.principal;
     fakes.google.state.providers = {
-      [legacyProvider]: { ...fakes.google.state.providers[fakes.names.provider]!, attributeCondition: "assertion.repository == 'octo-org/site'" },
+      [legacyProvider]: {
+        ...fakes.google.state.providers[fakes.names.provider]!,
+        attributeCondition: "assertion.repository == 'octo-org/site'",
+      },
     };
     fakes.google.state.serviceAccounts = {
-      [legacyAccount]: { projectId: 'demo-project', iamPolicy: { bindings: [{ role: 'roles/iam.workloadIdentityUser', members: [principal] }] } },
+      [legacyAccount]: {
+        projectId: 'demo-project',
+        iamPolicy: { bindings: [{ role: 'roles/iam.workloadIdentityUser', members: [principal] }] },
+      },
     };
-    fakes.google.state.projects[0]!.iamPolicy = { bindings: [{ role: 'roles/firebasehosting.admin', members: [`serviceAccount:${legacyAccount}`] }] };
+    fakes.google.state.projects[0]!.iamPolicy = {
+      bindings: [{ role: 'roles/firebasehosting.admin', members: [`serviceAccount:${legacyAccount}`] }],
+    };
     const repo = fakes.github.state.repos['octo-org/site']!;
     repo.variables = { GCP_WIF_PROVIDER: legacyProvider, GCP_DEPLOY_SA: legacyAccount };
 
@@ -684,7 +774,12 @@ describe('setup', () => {
     expect(fresh.context.adopted).toBeUndefined();
     expect(fresh.changes.map((c) => `${c.resource} ${c.action}`)).toContain('gcp.provider create');
 
-    const declined = await plan({ ...fakes.options, google: fakes.google, github: fakes.github, adopt: async () => false });
+    const declined = await plan({
+      ...fakes.options,
+      google: fakes.google,
+      github: fakes.github,
+      adopt: async () => false,
+    });
     expect(declined.context.adopted).toBeUndefined();
 
     const offers: unknown[] = [];
@@ -697,9 +792,17 @@ describe('setup', () => {
       }),
     );
     expect(offers).toEqual([
-      { provider: legacyProvider, serviceAccount: legacyAccount, variables: { provider: 'GCP_WIF_PROVIDER', serviceAccount: 'GCP_DEPLOY_SA' } },
+      {
+        provider: legacyProvider,
+        serviceAccount: legacyAccount,
+        variables: { provider: 'GCP_WIF_PROVIDER', serviceAccount: 'GCP_DEPLOY_SA' },
+      },
     ]);
-    expect(result.applied.map((c) => `${c.resource} ${c.action}`)).toEqual(['gcp.provider-condition update', 'gh.variables set', 'gh.variables set']);
+    expect(result.applied.map((c) => `${c.resource} ${c.action}`)).toEqual([
+      'gcp.provider-condition update',
+      'gh.variables set',
+      'gh.variables set',
+    ]);
     expect(result.status.ok).toBe(true);
     expect(result.status.context.provider).toBe(legacyProvider);
     expect(repo.variables).toEqual({
@@ -708,7 +811,9 @@ describe('setup', () => {
       FIREBASE_WIF_PROVIDER: legacyProvider,
       FIREBASE_WIF_SERVICE_ACCOUNT: legacyAccount,
     });
-    expect(fakes.google.state.providers[legacyProvider]!.attributeCondition).toBe(desiredAttributeCondition(987654321, 1234567));
+    expect(fakes.google.state.providers[legacyProvider]!.attributeCondition).toBe(
+      desiredAttributeCondition(987654321, 1234567),
+    );
   });
 });
 
@@ -736,12 +841,29 @@ describe('multiple projects', () => {
     });
     expect(report.context.apis).not.toContain('sts.googleapis.com');
     expect(report.context.apis).not.toContain('iamcredentials.googleapis.com');
-    for (const id of ['gcp.pool', 'gcp.provider', 'gcp.provider-condition', 'gcp.service-account', 'gcp.wi-user', 'gh.variables', 'gh.environment']) {
-      expect(check(report, id), id).toMatchObject({ status: 'skipped', message: 'shared from demo-project; check it with --project demo-project' });
+    for (const id of [
+      'gcp.pool',
+      'gcp.provider',
+      'gcp.provider-condition',
+      'gcp.service-account',
+      'gcp.wi-user',
+      'gh.variables',
+      'gh.environment',
+    ]) {
+      expect(check(report, id), id).toMatchObject({
+        status: 'skipped',
+        message: 'shared from demo-project; check it with --project demo-project',
+      });
     }
-    expect(report.changes.map((c) => `${c.resource} ${c.action}`)).toEqual(['gcp.apis enable', 'gcp.project-roles bind']);
+    expect(report.changes.map((c) => `${c.resource} ${c.action}`)).toEqual([
+      'gcp.apis enable',
+      'gcp.project-roles bind',
+    ]);
     expect(fakes.google.calls).toContainEqual(
-      expect.objectContaining({ url: expect.stringContaining('staging-project:testIamPermissions'), body: { permissions: [...CROSS_PROJECT_PERMISSIONS] } }),
+      expect.objectContaining({
+        url: expect.stringContaining('staging-project:testIamPermissions'),
+        body: { permissions: [...CROSS_PROJECT_PERMISSIONS] },
+      }),
     );
     expectConsistent(report);
 
@@ -750,7 +872,11 @@ describe('multiple projects', () => {
       'enable cloudresourcemanager.googleapis.com, firebasehosting.googleapis.com, iam.googleapis.com',
       `grant roles/firebasehosting.admin on staging-project to ${fakes.names.serviceAccount}`,
     ]);
-    expect(staging.iamPolicy).toEqual({ version: 1, etag: 'BwX1', bindings: [{ role: 'roles/firebasehosting.admin', members: [`serviceAccount:${fakes.names.serviceAccount}`] }] });
+    expect(staging.iamPolicy).toEqual({
+      version: 1,
+      etag: 'BwX1',
+      bindings: [{ role: 'roles/firebasehosting.admin', members: [`serviceAccount:${fakes.names.serviceAccount}`] }],
+    });
     expect(Object.keys(fakes.google.state.pools)).toEqual([fakes.names.pool]);
     expect(Object.keys(fakes.google.state.serviceAccounts)).toEqual([fakes.names.serviceAccount]);
     expect(fakes.github.state.repos['octo-org/site']!.variables).toEqual({
@@ -794,10 +920,14 @@ describe('multiple projects', () => {
 
   it('rejects an invalid home', async () => {
     const fakes = createConfiguredFakes();
-    await expect(run(fakes, { home: { provider: 'github', serviceAccount: fakes.names.serviceAccount } })).rejects.toMatchObject({
+    await expect(
+      run(fakes, { home: { provider: 'github', serviceAccount: fakes.names.serviceAccount } }),
+    ).rejects.toMatchObject({
       code: 'INVALID_NAME',
     });
-    await expect(run(fakes, { home: { provider: fakes.names.provider, serviceAccount: 'nope' } })).rejects.toMatchObject({
+    await expect(
+      run(fakes, { home: { provider: fakes.names.provider, serviceAccount: 'nope' } }),
+    ).rejects.toMatchObject({
       code: 'INVALID_NAME',
     });
   });
@@ -809,7 +939,12 @@ describe('multiple projects', () => {
     fakes.google.state.serviceAccounts[runtime] = { projectId: STAGING.projectId, iamPolicy: {} };
 
     const result = applied(await setupWith(fakes, { projectId: STAGING.projectId, presets: ['functions'] }));
-    expect(result.applied.map((c) => c.resource)).toEqual(['gcp.apis', 'gcp.project-roles', 'gcp.project-roles', 'gcp.runtime-sa-user']);
+    expect(result.applied.map((c) => c.resource)).toEqual([
+      'gcp.apis',
+      'gcp.project-roles',
+      'gcp.project-roles',
+      'gcp.runtime-sa-user',
+    ]);
     expect(fakes.google.state.serviceAccounts[runtime]!.iamPolicy!.bindings).toEqual([
       { role: 'roles/iam.serviceAccountUser', members: [`serviceAccount:${fakes.names.serviceAccount}`] },
     ]);

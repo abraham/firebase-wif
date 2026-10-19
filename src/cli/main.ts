@@ -258,7 +258,8 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
                   : {
                       onEvent: (event) => {
                         if (event.type === 'change:done') stdout(`  ✓ ${event.change.description}\n`);
-                        if (event.type === 'retry') stdout(`    retrying in ${Math.round(event.delayMs / 1000)}s: ${event.reason}\n`);
+                        if (event.type === 'retry')
+                          stdout(`    retrying in ${Math.round(event.delayMs / 1000)}s: ${event.reason}\n`);
                       },
                     }),
               },
@@ -371,7 +372,8 @@ const runSetup = async ({
     emit(result);
   } else {
     stdout(`\n${renderStatus(result.status, sources)}`);
-    if (result.manual.length) stdout(`Do by hand:\n${result.manual.map((change) => `  - ${change.description}\n`).join('')}`);
+    if (result.manual.length)
+      stdout(`Do by hand:\n${result.manual.map((change) => `  - ${change.description}\n`).join('')}`);
     if (result.applied.length) stdout(NEXT_STEPS);
   }
   return { code: result.status.ok ? EXIT.ok : EXIT.failed, context: result.status.context };

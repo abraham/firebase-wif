@@ -89,7 +89,10 @@ const stsError = (status: number, body: Record<string, unknown>) => {
     return fail("The provider's attribute condition doesn't allow this repository.", SETUP_FIX);
   }
   if (code === 'invalid_target') {
-    return fail("The workload identity pool or provider doesn't exist or is disabled.", `Check workload_identity_provider. ${STATUS_FIX}`);
+    return fail(
+      "The workload identity pool or provider doesn't exist or is disabled.",
+      `Check workload_identity_provider. ${STATUS_FIX}`,
+    );
   }
   return fail(`Google STS rejected the GitHub token (${code}${description ? `: ${description}` : ''}).`, STATUS_FIX);
 };
@@ -107,7 +110,10 @@ const impersonationError = (status: number, body: Record<string, unknown>, servi
   if (status === 404) {
     return fail(`Service account ${serviceAccount} doesn't exist.`, `Check service_account. ${SETUP_FIX}`);
   }
-  return fail(`Couldn't get an access token for ${serviceAccount} (${status}${message ? `: ${message}` : ''}).`, STATUS_FIX);
+  return fail(
+    `Couldn't get an access token for ${serviceAccount} (${status}${message ? `: ${message}` : ''}).`,
+    STATUS_FIX,
+  );
 };
 
 /**
@@ -121,7 +127,10 @@ export const verifyCredentials = async (
   const oidc = await fetch(config.credential_source.url, { headers: config.credential_source.headers, signal });
   const oidcBody = await readBody(oidc);
   if (!oidc.ok || typeof oidcBody.value !== 'string') {
-    throw failure('oidc', oidc.status)(`Couldn't get an OIDC token from GitHub (${oidc.status}).`, 'Add `permissions: id-token: write` to the job.');
+    throw failure('oidc', oidc.status)(
+      `Couldn't get an OIDC token from GitHub (${oidc.status}).`,
+      'Add `permissions: id-token: write` to the job.',
+    );
   }
 
   const sts = await fetch(config.token_url, {
@@ -140,7 +149,9 @@ export const verifyCredentials = async (
   const stsBody = await readBody(sts);
   if (!sts.ok || typeof stsBody.access_token !== 'string') throw stsError(sts.status, stsBody);
 
-  const serviceAccount = /serviceAccounts\/([^:]+):generateAccessToken$/.exec(config.service_account_impersonation_url)?.[1] ?? 'the service account';
+  const serviceAccount =
+    /serviceAccounts\/([^:]+):generateAccessToken$/.exec(config.service_account_impersonation_url)?.[1] ??
+    'the service account';
   const impersonation = await fetch(config.service_account_impersonation_url, {
     method: 'POST',
     headers: { authorization: `Bearer ${stsBody.access_token}`, 'content-type': 'application/json' },

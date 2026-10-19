@@ -50,26 +50,26 @@ jobs:
 Preview channels work the same way:
 
 ```yaml
-      - id: deploy
-        run: |
-          npx firebase-tools hosting:channel:deploy "pr-${{ github.event.number }}" \
-            --expires 7d --json > deploy.json
-          echo "url=$(jq -r '.result[].url' deploy.json)" >> "$GITHUB_OUTPUT"
+- id: deploy
+  run: |
+    npx firebase-tools hosting:channel:deploy "pr-${{ github.event.number }}" \
+      --expires 7d --json > deploy.json
+    echo "url=$(jq -r '.result[].url' deploy.json)" >> "$GITHUB_OUTPUT"
 ```
 
 ### `FirebaseExtended/action-hosting-deploy`
 
 ```yaml
-      - id: wif
-        uses: abraham/firebase-wif@v0
-        with:
-          workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
-          service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
-      - uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ steps.wif.outputs.credentials_json }}
-          projectId: ${{ steps.wif.outputs.project_id }}
+- id: wif
+  uses: abraham/firebase-wif@v0
+  with:
+    workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
+    service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
+- uses: FirebaseExtended/action-hosting-deploy@v0
+  with:
+    repoToken: ${{ secrets.GITHUB_TOKEN }}
+    firebaseServiceAccount: ${{ steps.wif.outputs.credentials_json }}
+    projectId: ${{ steps.wif.outputs.project_id }}
 ```
 
 ### `w9jds/firebase-action`
@@ -77,39 +77,39 @@ Preview channels work the same way:
 It runs in a container, so pass the credentials JSON instead of a file path:
 
 ```yaml
-      - id: wif
-        uses: abraham/firebase-wif@v0
-        with:
-          workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
-          service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
-      - uses: w9jds/firebase-action@v15
-        with:
-          args: deploy --only hosting
-        env:
-          GCP_SA_KEY: ${{ steps.wif.outputs.credentials_json }}
-          PROJECT_ID: ${{ steps.wif.outputs.project_id }}
+- id: wif
+  uses: abraham/firebase-wif@v0
+  with:
+    workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
+    service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
+- uses: w9jds/firebase-action@v15
+  with:
+    args: deploy --only hosting
+  env:
+    GCP_SA_KEY: ${{ steps.wif.outputs.credentials_json }}
+    PROJECT_ID: ${{ steps.wif.outputs.project_id }}
 ```
 
 ### Inputs
 
-| Input | Required | Default | Description |
-| ----- | -------- | ------- | ----------- |
-| `workload_identity_provider` | yes | | Full provider resource name, usually `${{ vars.FIREBASE_WIF_PROVIDER }}` |
-| `service_account` | yes | | Service account email, usually `${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}` |
-| `project_id` | no | `.firebaserc` default | Firebase project ID; falls back to the provider's project number |
-| `working_directory` | no | `.` | Where to look for `.firebaserc` |
-| `audience` | no | `https://iam.googleapis.com/<provider>` | For providers with custom `allowedAudiences` |
-| `verify` | no | `true` | Do a test token exchange so problems fail here, with a fix, instead of inside the deploy |
-| `export_environment` | no | `true` | Export `GOOGLE_APPLICATION_CREDENTIALS`, `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`, `GOOGLE_GHA_CREDS_PATH`, `GOOGLE_CLOUD_PROJECT`, `GCLOUD_PROJECT`, and `CLOUDSDK_CORE_PROJECT` |
+| Input                        | Required | Default                                 | Description                                                                                                                                                                       |
+| ---------------------------- | -------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workload_identity_provider` | yes      |                                         | Full provider resource name, usually `${{ vars.FIREBASE_WIF_PROVIDER }}`                                                                                                          |
+| `service_account`            | yes      |                                         | Service account email, usually `${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}`                                                                                                         |
+| `project_id`                 | no       | `.firebaserc` default                   | Firebase project ID; falls back to the provider's project number                                                                                                                  |
+| `working_directory`          | no       | `.`                                     | Where to look for `.firebaserc`                                                                                                                                                   |
+| `audience`                   | no       | `https://iam.googleapis.com/<provider>` | For providers with custom `allowedAudiences`                                                                                                                                      |
+| `verify`                     | no       | `true`                                  | Do a test token exchange so problems fail here, with a fix, instead of inside the deploy                                                                                          |
+| `export_environment`         | no       | `true`                                  | Export `GOOGLE_APPLICATION_CREDENTIALS`, `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`, `GOOGLE_GHA_CREDS_PATH`, `GOOGLE_CLOUD_PROJECT`, `GCLOUD_PROJECT`, and `CLOUDSDK_CORE_PROJECT` |
 
 ### Outputs
 
-| Output | Description |
-| ------ | ----------- |
-| `credentials_file_path` | Path to the `external_account` credentials file in `RUNNER_TEMP` |
-| `credentials_json` | The file's contents, masked, for actions that take a service account JSON string |
-| `project_id` | The resolved project ID |
-| `service_account` | The service account email |
+| Output                  | Description                                                                      |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| `credentials_file_path` | Path to the `external_account` credentials file in `RUNNER_TEMP`                 |
+| `credentials_json`      | The file's contents, masked, for actions that take a service account JSON string |
+| `project_id`            | The resolved project ID                                                          |
+| `service_account`       | The service account email                                                        |
 
 The credentials file is written outside the workspace with mode `0600` and deleted when the job ends. It holds the job's OIDC request token, so never upload it as an artifact.
 

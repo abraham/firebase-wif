@@ -6,10 +6,7 @@ export const CRM = 'https://cloudresourcemanager.googleapis.com/v1';
 export const IAM = 'https://iam.googleapis.com/v1';
 export const SERVICE_USAGE = 'https://serviceusage.googleapis.com/v1';
 
-export type Read<T> =
-  | { kind: 'found'; value: T }
-  | { kind: 'missing' }
-  | { kind: 'skipped'; reason: string };
+export type Read<T> = { kind: 'found'; value: T } | { kind: 'missing' } | { kind: 'skipped'; reason: string };
 
 export interface PoolResource {
   name?: string;
@@ -53,7 +50,9 @@ export interface Runtime {
 const describe = (error: unknown): string => {
   const status = statusOf(error);
   const message = error instanceof Error ? error.message.slice(0, 200) : 'unknown error';
-  return status === 403 ? `insufficient permission (${message})` : `request failed${status ? ` (${status})` : ''}: ${message}`;
+  return status === 403
+    ? `insufficient permission (${message})`
+    : `request failed${status ? ` (${status})` : ''}: ${message}`;
 };
 
 /** Turns a request into found/missing/skipped, so one unreadable resource never aborts a status run. */
@@ -84,7 +83,9 @@ export const readServices = (rt: Runtime): Promise<Read<Map<string, boolean>>> =
   rt.memo('services', () =>
     read(async () => {
       const { projectNumber, apis } = rt.ctx;
-      const query = apis.map((api) => `names=${encodeURIComponent(`projects/${projectNumber}/services/${api}`)}`).join('&');
+      const query = apis
+        .map((api) => `names=${encodeURIComponent(`projects/${projectNumber}/services/${api}`)}`)
+        .join('&');
       const { services = [] } = await rt.google.request<{ services?: ServiceState[] }>(
         'GET',
         `${SERVICE_USAGE}/projects/${projectNumber}/services:batchGet?${query}`,

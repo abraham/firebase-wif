@@ -17,7 +17,11 @@ const setup = async (env: NodeJS.ProcessEnv = {}) => {
 
 describe('createCore', () => {
   it('reads inputs like @actions/core', async () => {
-    const { core } = await setup({ INPUT_SERVICE_ACCOUNT: '  sa@x.iam.gserviceaccount.com\n', INPUT_VERIFY: 'False', INPUT_BAD: 'yes' });
+    const { core } = await setup({
+      INPUT_SERVICE_ACCOUNT: '  sa@x.iam.gserviceaccount.com\n',
+      INPUT_VERIFY: 'False',
+      INPUT_BAD: 'yes',
+    });
     expect(core.getInput('service_account')).toBe('sa@x.iam.gserviceaccount.com');
     expect(core.getInput('missing')).toBe('');
     expect(() => core.getInput('missing', { required: true })).toThrow('Input required and not supplied: missing');

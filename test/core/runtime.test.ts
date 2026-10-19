@@ -24,8 +24,14 @@ describe('read', () => {
       kind: 'skipped',
       reason: 'insufficient permission (denied)',
     });
-    expect(await read(() => Promise.reject(new HttpError(500, 'boom')))).toEqual({ kind: 'skipped', reason: 'request failed (500): boom' });
-    expect(await read(() => Promise.reject('weird'))).toEqual({ kind: 'skipped', reason: 'request failed: unknown error' });
+    expect(await read(() => Promise.reject(new HttpError(500, 'boom')))).toEqual({
+      kind: 'skipped',
+      reason: 'request failed (500): boom',
+    });
+    expect(await read(() => Promise.reject('weird'))).toEqual({
+      kind: 'skipped',
+      reason: 'request failed: unknown error',
+    });
   });
 
   it('truncates long messages', async () => {
@@ -64,7 +70,9 @@ describe('readers', () => {
       'sts.googleapis.com': false,
     });
     expect(fakes.google.calls).toHaveLength(1);
-    expect(fakes.google.calls[0]!.url).toMatch(/^https:\/\/serviceusage\.googleapis\.com\/v1\/projects\/123456789012\/services:batchGet\?names=/);
+    expect(fakes.google.calls[0]!.url).toMatch(
+      /^https:\/\/serviceusage\.googleapis\.com\/v1\/projects\/123456789012\/services:batchGet\?names=/,
+    );
     await readServices(rt);
     expect(fakes.google.calls).toHaveLength(1);
   });
@@ -73,7 +81,10 @@ describe('readers', () => {
     const fakes = createConfiguredFakes();
     const rt = await runtimeFor(fakes);
     expect(await readPool(rt)).toMatchObject({ kind: 'found', value: { state: 'ACTIVE' } });
-    expect(await readProvider(rt)).toMatchObject({ kind: 'found', value: { oidc: { issuerUri: 'https://token.actions.githubusercontent.com' } } });
+    expect(await readProvider(rt)).toMatchObject({
+      kind: 'found',
+      value: { oidc: { issuerUri: 'https://token.actions.githubusercontent.com' } },
+    });
     expect(await readServiceAccount(rt)).toMatchObject({ kind: 'found', value: { email: fakes.names.serviceAccount } });
     expect(await readServiceAccountKeys(rt)).toEqual({ kind: 'found', value: [] });
     expect(await readServiceAccountPolicy(rt, fakes.names.serviceAccount)).toMatchObject({ kind: 'found' });
@@ -86,7 +97,10 @@ describe('readers', () => {
     const fakes = createConfiguredFakes();
     const rt = await runtimeFor(fakes);
     fakes.google.state.projects[0]!.enabledServices = [];
-    expect(await readPool(rt)).toEqual({ kind: 'skipped', reason: 'blocked by gcp.apis (iam.googleapis.com is disabled)' });
+    expect(await readPool(rt)).toEqual({
+      kind: 'skipped',
+      reason: 'blocked by gcp.apis (iam.googleapis.com is disabled)',
+    });
     expect(await readServiceAccount(rt)).toMatchObject({ kind: 'skipped' });
     expect(fakes.google.calls.every((c) => c.url.includes('serviceusage'))).toBe(true);
   });
@@ -94,7 +108,10 @@ describe('readers', () => {
   it('reads the project policy as version 3', async () => {
     const fakes = createConfiguredFakes();
     const rt = await runtimeFor(fakes);
-    expect(await readProjectPolicy(rt)).toMatchObject({ kind: 'found', value: { bindings: [{ role: 'roles/firebasehosting.admin' }] } });
+    expect(await readProjectPolicy(rt)).toMatchObject({
+      kind: 'found',
+      value: { bindings: [{ role: 'roles/firebasehosting.admin' }] },
+    });
     expect(fakes.google.calls[0]).toEqual({
       method: 'POST',
       url: 'https://cloudresourcemanager.googleapis.com/v1/projects/demo-project:getIamPolicy',

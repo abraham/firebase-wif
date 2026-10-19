@@ -57,12 +57,18 @@ describe('waitForOperation', () => {
 
   it('throws operation errors and times out', async () => {
     const { w } = writer();
-    const failing = { request: async <T>() => ({ name: 'operations/1', done: true, error: { code: 9, message: 'nope' } }) as T };
-    await expect(waitForOperation(w, failing, 'https://x.test', { name: 'operations/1' }, 'do it')).rejects.toThrow('nope');
+    const failing = {
+      request: async <T>() => ({ name: 'operations/1', done: true, error: { code: 9, message: 'nope' } }) as T,
+    };
+    await expect(waitForOperation(w, failing, 'https://x.test', { name: 'operations/1' }, 'do it')).rejects.toThrow(
+      'nope',
+    );
 
     let polls = 0;
     const pending = { request: async <T>() => (polls++, { name: 'operations/1', done: false }) as T };
-    await expect(waitForOperation(w, pending, 'https://x.test', { name: 'operations/1' }, 'do it')).rejects.toMatchObject({
+    await expect(
+      waitForOperation(w, pending, 'https://x.test', { name: 'operations/1' }, 'do it'),
+    ).rejects.toMatchObject({
       code: 'OPERATION_TIMEOUT',
       message: 'Timed out waiting to do it.',
     });
@@ -74,7 +80,9 @@ describe('waitForOperation', () => {
     const controller = new AbortController();
     const { w } = writer({ signal: controller.signal, sleep: async () => controller.abort() });
     const google = { request: async <T>() => ({}) as T };
-    await expect(waitForOperation(w, google, 'https://x.test', { name: 'operations/1' }, 'do it')).rejects.toMatchObject({
+    await expect(
+      waitForOperation(w, google, 'https://x.test', { name: 'operations/1' }, 'do it'),
+    ).rejects.toMatchObject({
       name: 'AbortError',
     });
   });
@@ -85,10 +93,15 @@ describe('retry', () => {
     const { w, events, sleeps } = writer();
     let attempts = 0;
     await expect(
-      retry(w, 'flaky', async () => {
-        attempts++;
-        throw new Error('again');
-      }, () => 10),
+      retry(
+        w,
+        'flaky',
+        async () => {
+          attempts++;
+          throw new Error('again');
+        },
+        () => 10,
+      ),
     ).rejects.toThrow('again');
     expect(attempts).toBe(MAX_RETRIES + 1);
     expect(sleeps).toEqual(Array(MAX_RETRIES).fill(10));
@@ -98,11 +111,25 @@ describe('retry', () => {
   it('returns the first success and never retries aborts', async () => {
     const { w } = writer();
     let attempts = 0;
-    expect(await retry(w, 'x', async () => (++attempts < 3 ? Promise.reject(new Error('x')) : 'ok'), () => 0)).toBe('ok');
+    expect(
+      await retry(
+        w,
+        'x',
+        async () => (++attempts < 3 ? Promise.reject(new Error('x')) : 'ok'),
+        () => 0,
+      ),
+    ).toBe('ok');
 
     const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
     let calls = 0;
-    await expect(retry(w, 'x', async () => (calls++, Promise.reject(abort)), () => 0)).rejects.toBe(abort);
+    await expect(
+      retry(
+        w,
+        'x',
+        async () => (calls++, Promise.reject(abort)),
+        () => 0,
+      ),
+    ).rejects.toBe(abort);
     expect(calls).toBe(1);
   });
 });
@@ -129,14 +156,26 @@ describe('updatePolicy', () => {
   };
 
   const addViewer = (policy: Policy) =>
-    policy.bindings?.length ? undefined : { ...policy, bindings: [{ role: 'roles/viewer', members: ['user:a@example.com'] }] };
+    policy.bindings?.length
+      ? undefined
+      : { ...policy, bindings: [{ role: 'roles/viewer', members: ['user:a@example.com'] }] };
 
   it('reads, changes, and writes back the policy with its version and etag', async () => {
     const google = backend();
-    await updatePolicy(writer().w, google, { resource: 'https://x.test/p', getBody: { options: {} }, label: 'p', change: addViewer });
+    await updatePolicy(writer().w, google, {
+      resource: 'https://x.test/p',
+      getBody: { options: {} },
+      label: 'p',
+      change: addViewer,
+    });
     expect(google.calls).toEqual([
       { url: 'https://x.test/p:getIamPolicy', body: { options: {} } },
-      { url: 'https://x.test/p:setIamPolicy', body: { policy: { version: 3, etag: 'a', bindings: [{ role: 'roles/viewer', members: ['user:a@example.com'] }] } } },
+      {
+        url: 'https://x.test/p:setIamPolicy',
+        body: {
+          policy: { version: 3, etag: 'a', bindings: [{ role: 'roles/viewer', members: ['user:a@example.com'] }] },
+        },
+      },
     ]);
     await updatePolicy(writer().w, google, { resource: 'https://x.test/p', label: 'p', change: addViewer });
     expect(google.calls).toHaveLength(3);
@@ -162,10 +201,18 @@ describe('updatePolicy', () => {
     expect(created.sleeps).toEqual([5000, 5000]);
 
     await expect(
-      updatePolicy(writer().w, backend([new HttpError(400, 'no member')]), { resource: 'https://x.test/p', label: 'p', change: addViewer }),
+      updatePolicy(writer().w, backend([new HttpError(400, 'no member')]), {
+        resource: 'https://x.test/p',
+        label: 'p',
+        change: addViewer,
+      }),
     ).rejects.toMatchObject({ status: 400 });
     await expect(
-      updatePolicy(created.w, backend([new HttpError(403, 'denied')]), { resource: 'https://x.test/p', label: 'p', change: addViewer }),
+      updatePolicy(created.w, backend([new HttpError(403, 'denied')]), {
+        resource: 'https://x.test/p',
+        label: 'p',
+        change: addViewer,
+      }),
     ).rejects.toMatchObject({ status: 403 });
   });
 });

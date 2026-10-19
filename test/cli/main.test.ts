@@ -94,7 +94,20 @@ describe('firebase-wif status', () => {
 
   it('passes flags through', async () => {
     const fakes = createConfiguredFakes();
-    const { stdout } = await cli(['--json', '--preset', 'hosting', '--preset', 'firestore', '--role', 'roles/datastore.viewer', '--provider', 'other-provider'], fakes);
+    const { stdout } = await cli(
+      [
+        '--json',
+        '--preset',
+        'hosting',
+        '--preset',
+        'firestore',
+        '--role',
+        'roles/datastore.viewer',
+        '--provider',
+        'other-provider',
+      ],
+      fakes,
+    );
     const report = JSON.parse(stdout);
     expect(report.context.presets).toEqual(['hosting', 'firestore']);
     expect(report.context.roles).toContain('roles/datastore.viewer');
@@ -114,7 +127,9 @@ describe('firebase-wif status', () => {
   it('exits 3 without Google credentials', async () => {
     const { code, stderr } = await cli([], createConfiguredFakes(), {
       googleClient: async () => {
-        throw new FirebaseWifError('NO_GOOGLE_CREDENTIALS', 'No Google Cloud credentials found.', { fix: 'gcloud auth login' });
+        throw new FirebaseWifError('NO_GOOGLE_CREDENTIALS', 'No Google Cloud credentials found.', {
+          fix: 'gcloud auth login',
+        });
       },
     });
     expect(code).toBe(3);
@@ -136,7 +151,9 @@ const brokenFakes = () => {
 };
 
 const writes = (fakes: ConfiguredFakes) =>
-  [...fakes.google.calls, ...fakes.github.calls].filter((c) => c.method !== 'GET' && !/:(getIamPolicy|testIamPermissions)$/.test(c.url));
+  [...fakes.google.calls, ...fakes.github.calls].filter(
+    (c) => c.method !== 'GET' && !/:(getIamPolicy|testIamPermissions)$/.test(c.url),
+  );
 
 describe('firebase-wif setup', () => {
   it('prints the plan with --dry-run and changes nothing', async () => {
@@ -225,7 +242,9 @@ describe('firebase-wif setup', () => {
     const result = JSON.parse(stdout);
     expect(result.applied.map((c: { resource: string }) => c.resource)).toEqual(['gh.variables', 'gh.variables']);
     expect(result.status.ok).toBe(true);
-    expect(fakes.github.state.repos['octo-org/site']!.variables).toMatchObject({ GCP_WIF_PROVIDER: fakes.names.provider });
+    expect(fakes.github.state.repos['octo-org/site']!.variables).toMatchObject({
+      GCP_WIF_PROVIDER: fakes.names.provider,
+    });
 
     // status follows the legacy variables, so it only reports the missing new ones.
     const report = JSON.parse((await cli(['status', '--json'], legacy())).stdout);
@@ -233,7 +252,10 @@ describe('firebase-wif setup', () => {
   });
 
   it('prints the plan as JSON with --dry-run --json', async () => {
-    const { code, stdout } = await cli(['setup', '--dry-run', '--json', '--prune', '--scheduler', '--preset', 'functions'], brokenFakes());
+    const { code, stdout } = await cli(
+      ['setup', '--dry-run', '--json', '--prune', '--scheduler', '--preset', 'functions'],
+      brokenFakes(),
+    );
     expect(code).toBe(0);
     const planned = JSON.parse(stdout);
     expect(Object.keys(planned)).toEqual(['context', 'changes', 'preflight']);
@@ -243,7 +265,15 @@ describe('firebase-wif setup', () => {
   it('passes runtime service accounts through', async () => {
     const fakes = createConfiguredFakes();
     const { stdout } = await cli(
-      ['setup', '--dry-run', '--json', '--preset', 'functions', '--runtime-service-account', 'runner@demo-project.iam.gserviceaccount.com'],
+      [
+        'setup',
+        '--dry-run',
+        '--json',
+        '--preset',
+        'functions',
+        '--runtime-service-account',
+        'runner@demo-project.iam.gserviceaccount.com',
+      ],
       fakes,
     );
     expect(JSON.parse(stdout).context.runtimeServiceAccounts).toEqual(['runner@demo-project.iam.gserviceaccount.com']);
@@ -259,7 +289,7 @@ describe('firebase-wif setup', () => {
     expect(writes(fakes)).toEqual([]);
   });
 
-  it("exits 1 when a provider belongs to another repository", async () => {
+  it('exits 1 when a provider belongs to another repository', async () => {
     const fakes = createConfiguredFakes();
     fakes.google.state.providers[fakes.names.provider]!.attributeCondition = "assertion.repository_id == '1'";
     const { code, stderr } = await cli(['setup', '--yes'], fakes);
@@ -273,7 +303,9 @@ describe('firebase-wif setup', () => {
     fakes.google.state.failures = [{ url: '/providers?', status: 500, message: 'backend error' }];
     const { code, stderr } = await cli(['setup', '--yes'], fakes);
     expect(code).toBe(1);
-    expect(stderr).toContain("Couldn't create provider github-987654321 (500): backend error. Already applied: create workload identity pool github.");
+    expect(stderr).toContain(
+      "Couldn't create provider github-987654321 (500): backend error. Already applied: create workload identity pool github.",
+    );
   });
 
   it('lists manual steps without GitHub credentials', async () => {
@@ -359,7 +391,9 @@ describe('--all-aliases', () => {
     const cwd = await aliasDir({ default: 'missing-project', staging: 'demo-project' });
     const { code, stdout } = await cli(['--all-aliases', '--json'], fakes, { cwd });
     expect(code).toBe(3);
-    expect(JSON.parse(stdout)).toEqual([{ alias: 'default', error: expect.objectContaining({ code: 'PROJECT_NOT_FOUND' }) }]);
+    expect(JSON.parse(stdout)).toEqual([
+      { alias: 'default', error: expect.objectContaining({ code: 'PROJECT_NOT_FOUND' }) },
+    ]);
   });
 
   it('needs aliases and no --project', async () => {

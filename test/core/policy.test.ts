@@ -19,7 +19,9 @@ describe('addMember and removeMember', () => {
       role: 'roles/editor',
       members: ['user:b@example.com', 'user:c@example.com'],
     });
-    expect(addMember({}, 'roles/editor', 'user:c@example.com')).toEqual({ bindings: [{ role: 'roles/editor', members: ['user:c@example.com'] }] });
+    expect(addMember({}, 'roles/editor', 'user:c@example.com')).toEqual({
+      bindings: [{ role: 'roles/editor', members: ['user:c@example.com'] }],
+    });
   });
 
   it('returns the same policy when the member is already there', () => {

@@ -21,25 +21,41 @@ describe('createConfiguredFakes', () => {
   });
 
   it('accepts custom identifiers', () => {
-    const fakes = createConfiguredFakes({ projectId: 'other-project', projectNumber: '1', repo: 'a/b', repoId: 5, ownerId: 6, defaultBranch: 'trunk' });
+    const fakes = createConfiguredFakes({
+      projectId: 'other-project',
+      projectNumber: '1',
+      repo: 'a/b',
+      repoId: 5,
+      ownerId: 6,
+      defaultBranch: 'trunk',
+    });
     expect(fakes.names.serviceAccount).toBe('github-5@other-project.iam.gserviceaccount.com');
-    expect(fakes.github.state.repos['a/b']).toMatchObject({ id: 5, owner: { id: 6, login: 'a' }, default_branch: 'trunk' });
+    expect(fakes.github.state.repos['a/b']).toMatchObject({
+      id: 5,
+      owner: { id: 6, login: 'a' },
+      default_branch: 'trunk',
+    });
     expect(fakes.github.state.repos['a/b']!.environments!.production!.branchPolicies).toEqual(['trunk']);
   });
 
   it('derives presets from firebase.json and adds the runtime account for functions', () => {
     const fakes = createConfiguredFakes({ firebaseJson: { hosting: {}, functions: {} } });
     expect(fakes.options.presets).toEqual(['hosting', 'functions']);
-    expect(Object.keys(fakes.google.state.serviceAccounts)).toContain('123456789012-compute@developer.gserviceaccount.com');
+    expect(Object.keys(fakes.google.state.serviceAccounts)).toContain(
+      '123456789012-compute@developer.gserviceaccount.com',
+    );
   });
 
-  it.each<PresetName[]>([['hosting'], ['firestore'], ['storage'], ['functions'], ['hosting', 'firestore', 'storage', 'functions']])(
-    'passes status for %j',
-    async (...presets) => {
-      const fakes = createConfiguredFakes({ presets });
-      const report = await status({ ...fakes.options, google: fakes.google, github: fakes.github });
-      expect(report.ok).toBe(true);
-      expect(report.changes).toEqual([]);
-    },
-  );
+  it.each<PresetName[]>([
+    ['hosting'],
+    ['firestore'],
+    ['storage'],
+    ['functions'],
+    ['hosting', 'firestore', 'storage', 'functions'],
+  ])('passes status for %j', async (...presets) => {
+    const fakes = createConfiguredFakes({ presets });
+    const report = await status({ ...fakes.options, google: fakes.google, github: fakes.github });
+    expect(report.ok).toBe(true);
+    expect(report.changes).toEqual([]);
+  });
 });

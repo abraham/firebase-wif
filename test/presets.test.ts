@@ -44,7 +44,10 @@ describe('rolesFor', () => {
   });
 
   it('deduplicates and sorts with extra roles', () => {
-    const roles = rolesFor({ presets: ['storage', 'firestore'], roles: ['roles/datastore.viewer', 'roles/firebaserules.admin'] });
+    const roles = rolesFor({
+      presets: ['storage', 'firestore'],
+      roles: ['roles/datastore.viewer', 'roles/firebaserules.admin'],
+    });
     expect(roles.filter((role) => role === 'roles/firebaserules.admin')).toHaveLength(1);
     expect(roles).toContain('roles/datastore.viewer');
     expect(roles).toEqual([...roles].sort());

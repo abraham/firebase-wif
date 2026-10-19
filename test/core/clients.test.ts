@@ -24,9 +24,12 @@ const echoFetch = () => {
   const requests: { url: string; init: RequestInit }[] = [];
   const fetch = vi.fn(async (url: string, init: RequestInit) => {
     requests.push({ url, init });
-    if (url.endsWith('/missing')) return new Response(JSON.stringify({ error: { message: 'Not found: missing' } }), { status: 404 });
-    if (url.endsWith('/text-error')) return new Response('<html>Bad gateway</html>', { status: 502, statusText: 'Bad Gateway' });
-    if (url.endsWith('/github-error')) return new Response(JSON.stringify({ message: 'Bad credentials' }), { status: 401 });
+    if (url.endsWith('/missing'))
+      return new Response(JSON.stringify({ error: { message: 'Not found: missing' } }), { status: 404 });
+    if (url.endsWith('/text-error'))
+      return new Response('<html>Bad gateway</html>', { status: 502, statusText: 'Bad Gateway' });
+    if (url.endsWith('/github-error'))
+      return new Response(JSON.stringify({ message: 'Bad credentials' }), { status: 401 });
     if (url.endsWith('/empty')) return new Response(null, { status: 204 });
     return new Response(JSON.stringify({ auth: new Headers(init.headers).get('authorization') }), { status: 200 });
   });
@@ -57,7 +60,9 @@ describe('createGoogleClient', () => {
   it('raises HttpError with the status and API message', async () => {
     const { fetch } = echoFetch();
     const google = createGoogleClient({ getAccessToken: async () => 'token', fetch });
-    await expect(google.request('GET', 'https://example.test/missing')).rejects.toEqual(new HttpError(404, 'Not found: missing'));
+    await expect(google.request('GET', 'https://example.test/missing')).rejects.toEqual(
+      new HttpError(404, 'Not found: missing'),
+    );
     await expect(google.request('GET', 'https://example.test/text-error')).rejects.toMatchObject({
       status: 502,
       message: '<html>Bad gateway</html>',
@@ -117,13 +122,17 @@ describe('defaultGoogleClient', () => {
 
   it('explains how to log in when nothing works', async () => {
     adc.fail = true;
-    await expect(defaultGoogleClient({ env: {}, exec: async () => Promise.reject(new Error('ENOENT')) })).rejects.toMatchObject({
+    await expect(
+      defaultGoogleClient({ env: {}, exec: async () => Promise.reject(new Error('ENOENT')) }),
+    ).rejects.toMatchObject({
       code: 'NO_GOOGLE_CREDENTIALS',
       fix: 'gcloud auth login',
     });
     adc.fail = false;
     adc.token = undefined;
-    await expect(defaultGoogleClient({ env: {}, exec: async () => '' })).rejects.toMatchObject({ code: 'NO_GOOGLE_CREDENTIALS' });
+    await expect(defaultGoogleClient({ env: {}, exec: async () => '' })).rejects.toMatchObject({
+      code: 'NO_GOOGLE_CREDENTIALS',
+    });
   });
 });
 
@@ -145,7 +154,10 @@ describe('defaultGitHubClient', () => {
 
   it('explains how to log in', async () => {
     const exec = vi.fn(async () => Promise.reject(new Error('gh: command not found')));
-    await expect(defaultGitHubClient({ env: {}, exec })).rejects.toMatchObject({ code: 'NO_GITHUB_CREDENTIALS', fix: 'gh auth login' });
+    await expect(defaultGitHubClient({ env: {}, exec })).rejects.toMatchObject({
+      code: 'NO_GITHUB_CREDENTIALS',
+      fix: 'gh auth login',
+    });
   });
 });
 
@@ -158,8 +170,12 @@ describe('toGoogleClient and toGitHubClient', () => {
     const { fetch } = echoFetch();
     vi.stubGlobal('fetch', fetch);
     try {
-      expect(await (await toGoogleClient({ accessToken: 'static' })).request('GET', 'https://example.test')).toEqual({ auth: 'Bearer static' });
-      expect(await (await toGoogleClient({ getAccessToken: async () => 'dynamic' })).request('GET', 'https://example.test')).toEqual({
+      expect(await (await toGoogleClient({ accessToken: 'static' })).request('GET', 'https://example.test')).toEqual({
+        auth: 'Bearer static',
+      });
+      expect(
+        await (await toGoogleClient({ getAccessToken: async () => 'dynamic' })).request('GET', 'https://example.test'),
+      ).toEqual({
         auth: 'Bearer dynamic',
       });
       expect(await (await toGitHubClient({ token: 'gh' })).request('GET', '/user')).toEqual({ auth: 'Bearer gh' });

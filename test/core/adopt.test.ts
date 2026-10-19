@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { findAdoptCandidate, LEGACY_VARIABLES } from '../../src/core/adopt.js';
 
 const project = { projectId: 'demo-project', projectNumber: '123' };
-const provider = (number = '123', id = 'github-actions') => `projects/${number}/locations/global/workloadIdentityPools/github/providers/${id}`;
+const provider = (number = '123', id = 'github-actions') =>
+  `projects/${number}/locations/global/workloadIdentityPools/github/providers/${id}`;
 const account = (projectId = 'demo-project') => `github-deploy@${projectId}.iam.gserviceaccount.com`;
 
 describe('findAdoptCandidate', () => {
@@ -20,7 +21,11 @@ describe('findAdoptCandidate', () => {
           ],
           project,
         ),
-      ).toEqual({ provider: provider(), serviceAccount: account(), variables: { provider: providerName, serviceAccount: accountName } });
+      ).toEqual({
+        provider: provider(),
+        serviceAccount: account(),
+        variables: { provider: providerName, serviceAccount: accountName },
+      });
     }
   });
 

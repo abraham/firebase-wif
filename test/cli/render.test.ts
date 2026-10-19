@@ -111,7 +111,13 @@ describe('renderPlan', () => {
 
   it('says when there is nothing to do and shows adoption', () => {
     const output = renderPlan(
-      planOf([], { adopted: { provider: 'projects/1/p', serviceAccount: 'sa@x.iam.gserviceaccount.com', variables: { provider: 'P', serviceAccount: 'S' } } }),
+      planOf([], {
+        adopted: {
+          provider: 'projects/1/p',
+          serviceAccount: 'sa@x.iam.gserviceaccount.com',
+          variables: { provider: 'P', serviceAccount: 'S' },
+        },
+      }),
       sources,
     );
     expect(output).toContain('  adopt    projects/1/p\n           sa@x.iam.gserviceaccount.com (from P and S)\n');

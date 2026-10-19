@@ -186,7 +186,12 @@ export const resolveContext = async ({
     if (repoName) {
       repoSource = 'git remote origin';
     } else {
-      repoName = await tryExec(exec, 'gh', ['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner'], start);
+      repoName = await tryExec(
+        exec,
+        'gh',
+        ['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner'],
+        start,
+      );
       repoSource = 'gh repo view';
     }
   }

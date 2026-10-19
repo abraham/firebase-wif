@@ -23,11 +23,7 @@ export const PRESETS: Readonly<Record<PresetName, Preset>> = {
     apis: ['firebasehosting.googleapis.com'],
   },
   firestore: {
-    roles: [
-      'roles/firebaserules.admin',
-      'roles/datastore.indexAdmin',
-      'roles/serviceusage.serviceUsageConsumer',
-    ],
+    roles: ['roles/firebaserules.admin', 'roles/datastore.indexAdmin', 'roles/serviceusage.serviceUsageConsumer'],
     apis: ['firestore.googleapis.com', 'firebaserules.googleapis.com'],
   },
   storage: {

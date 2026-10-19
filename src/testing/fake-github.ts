@@ -48,7 +48,12 @@ export const createFakeGitHub = (seed: Partial<FakeGitHubState> = {}): FakeGitHu
     const { variables = {}, secrets = [], environments = {} } = repo;
 
     if (rest === '' && method === 'GET') {
-      return { id: repo.id, owner: repo.owner, default_branch: repo.default_branch, permissions: repo.permissions ?? { admin: true } };
+      return {
+        id: repo.id,
+        owner: repo.owner,
+        default_branch: repo.default_branch,
+        permissions: repo.permissions ?? { admin: true },
+      };
     }
 
     if (rest === '/actions/variables' && method === 'GET') {
@@ -138,7 +143,8 @@ export const createFakeGitHub = (seed: Partial<FakeGitHubState> = {}): FakeGitHu
     calls,
     async request<T>(method: string, path: string, body?: unknown): Promise<T> {
       calls.push(body === undefined ? { method, url: path } : { method, url: path, body: structuredClone(body) });
-      if (state.forbidden.some((fragment) => path.includes(fragment))) throw new HttpError(403, 'Resource not accessible by integration');
+      if (state.forbidden.some((fragment) => path.includes(fragment)))
+        throw new HttpError(403, 'Resource not accessible by integration');
       return structuredClone(route(method, path.split('?')[0]!, body)) as T;
     },
   };

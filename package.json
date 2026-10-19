@@ -41,6 +41,8 @@
     "build:action": "esbuild src/action/main.ts src/action/post.ts --bundle --platform=node --target=node24 --format=esm --legal-comments=none --outdir=dist/action",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "prepack": "npm run build"
   },
   "dependencies": {
@@ -52,6 +54,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "esbuild": "0.28.2",
+    "prettier": "3.9.10",
     "typescript": "^6.0.0",
     "vitest": "^5.0.0"
   }

@@ -45,11 +45,23 @@ describe('local checks', () => {
 
   it('local.project-match', async () => {
     const rt = await runtimeFor();
-    expect(await run('local.project-match', { ...rt, local: {} })).toMatchObject({ status: 'warn', fix: 'firebase use --add demo-project' });
-    expect((await run('local.project-match', { ...rt, local: { firebaserc: { projects: { default: 'demo-project' } } } })).status).toBe('pass');
-    expect((await run('local.project-match', { ...rt, local: { firebaserc: { projects: { default: 'other-project' } } } })).status).toBe('warn');
+    expect(await run('local.project-match', { ...rt, local: {} })).toMatchObject({
+      status: 'warn',
+      fix: 'firebase use --add demo-project',
+    });
     expect(
-      await run('local.project-match', { ...rt, local: { firebaserc: { projects: { default: 'other-project', staging: 'demo-project' } } } }),
+      (await run('local.project-match', { ...rt, local: { firebaserc: { projects: { default: 'demo-project' } } } }))
+        .status,
+    ).toBe('pass');
+    expect(
+      (await run('local.project-match', { ...rt, local: { firebaserc: { projects: { default: 'other-project' } } } }))
+        .status,
+    ).toBe('warn');
+    expect(
+      await run('local.project-match', {
+        ...rt,
+        local: { firebaserc: { projects: { default: 'other-project', staging: 'demo-project' } } },
+      }),
     ).toEqual({ status: 'pass', message: 'alias staging is demo-project' });
   });
 
@@ -58,7 +70,9 @@ describe('local checks', () => {
     const workflows = { 'a.yml': 'jobs:\n  x:\n    steps:\n      - uses: google-github-actions/auth@v3\n' };
 
     expect((await run('local.creds-ignored', { ...rt, local: { workflows: {} } })).status).toBe('pass');
-    expect(await run('local.creds-ignored', { ...rt, local: { workflows, firebaseJson: { hosting: [{ public: '.' }] } } })).toMatchObject({
+    expect(
+      await run('local.creds-ignored', { ...rt, local: { workflows, firebaseJson: { hosting: [{ public: '.' }] } } }),
+    ).toMatchObject({
       status: 'warn',
       message: expect.stringContaining('.gitignore or the Hosting ignore list'),
     });
@@ -66,21 +80,38 @@ describe('local checks', () => {
       (
         await run('local.creds-ignored', {
           ...rt,
-          local: { workflows, gitignore: 'gha-creds-*.json\n', firebaseJson: { hosting: { public: '.', ignore: ['**/gha-creds-*.json'] } } },
+          local: {
+            workflows,
+            gitignore: 'gha-creds-*.json\n',
+            firebaseJson: { hosting: { public: '.', ignore: ['**/gha-creds-*.json'] } },
+          },
         })
       ).status,
     ).toBe('pass');
-    expect((await run('local.creds-ignored', { ...rt, local: { workflows, gitignore: 'gha-creds-*.json', firebaseJson: { hosting: { public: 'dist' } } } })).status).toBe('pass');
+    expect(
+      (
+        await run('local.creds-ignored', {
+          ...rt,
+          local: { workflows, gitignore: 'gha-creds-*.json', firebaseJson: { hosting: { public: 'dist' } } },
+        })
+      ).status,
+    ).toBe('pass');
   });
 });
 
 describe('Google Cloud checks', () => {
   it('gcp.project and gcp.operator', async () => {
     const rt = await runtimeFor();
-    expect(await run('gcp.project', rt)).toEqual({ status: 'pass', message: 'demo-project accessible (#123456789012)' });
+    expect(await run('gcp.project', rt)).toEqual({
+      status: 'pass',
+      message: 'demo-project accessible (#123456789012)',
+    });
     expect((await run('gcp.operator', rt)).status).toBe('pass');
     expect(
-      await run('gcp.operator', { ...rt, preflight: { missingPermissions: ['iam.serviceAccounts.create'], githubAdmin: true } }),
+      await run('gcp.operator', {
+        ...rt,
+        preflight: { missingPermissions: ['iam.serviceAccounts.create'], githubAdmin: true },
+      }),
     ).toMatchObject({ status: 'warn', message: expect.stringContaining('iam.serviceAccounts.create') });
   });
 
@@ -90,19 +121,33 @@ describe('Google Cloud checks', () => {
     expect((await run('gcp.sa-keys', rt)).status).toBe('pass');
 
     fakes.google.state.serviceAccounts[fakes.names.serviceAccount]!.keys = ['a', 'b'];
-    expect(await run('gcp.sa-keys', await runtimeFor(fakes))).toMatchObject({ status: 'warn', message: expect.stringContaining('2 user-managed keys') });
+    expect(await run('gcp.sa-keys', await runtimeFor(fakes))).toMatchObject({
+      status: 'warn',
+      message: expect.stringContaining('2 user-managed keys'),
+    });
 
     delete fakes.google.state.serviceAccounts[fakes.names.serviceAccount];
-    expect(await run('gcp.sa-keys', await runtimeFor(fakes))).toEqual({ status: 'skipped', message: "service account doesn't exist yet" });
+    expect(await run('gcp.sa-keys', await runtimeFor(fakes))).toEqual({
+      status: 'skipped',
+      message: "service account doesn't exist yet",
+    });
   });
 
   it('gcp.extra-roles suggests --prune only for managed accounts', async () => {
     const fakes = createConfiguredFakes();
-    fakes.google.state.projects[0]!.iamPolicy.bindings!.push({ role: 'roles/editor', members: [`serviceAccount:${fakes.names.serviceAccount}`] });
-    expect(await run('gcp.extra-roles', await runtimeFor(fakes))).toMatchObject({ status: 'warn', fix: 'firebase-wif setup --prune' });
+    fakes.google.state.projects[0]!.iamPolicy.bindings!.push({
+      role: 'roles/editor',
+      members: [`serviceAccount:${fakes.names.serviceAccount}`],
+    });
+    expect(await run('gcp.extra-roles', await runtimeFor(fakes))).toMatchObject({
+      status: 'warn',
+      fix: 'firebase-wif setup --prune',
+    });
 
     fakes.google.state.serviceAccounts[fakes.names.serviceAccount]!.description = 'made by hand';
-    expect(await run('gcp.extra-roles', await runtimeFor(fakes))).toMatchObject({ fix: 'Remove the extra roles if deploys no longer need them.' });
+    expect(await run('gcp.extra-roles', await runtimeFor(fakes))).toMatchObject({
+      fix: 'Remove the extra roles if deploys no longer need them.',
+    });
   });
 
   it('gcp.wi-user-broad', async () => {
@@ -125,23 +170,40 @@ describe('GitHub checks', () => {
     const rt = await runtimeFor();
     expect((await run('gh.repo', rt)).status).toBe('pass');
     expect((await run('gh.repo', { ...rt, repo: { ...rt.repo, permissions: { admin: false } } })).status).toBe('warn');
-    expect(await run('gh.repo', { ...rt, github: undefined })).toMatchObject({ status: 'pass', message: expect.stringContaining('skipped') });
+    expect(await run('gh.repo', { ...rt, github: undefined })).toMatchObject({
+      status: 'pass',
+      message: expect.stringContaining('skipped'),
+    });
   });
 
   it('gh.legacy-secrets', async () => {
     const fakes = createConfiguredFakes();
-    fakes.github.state.repos['octo-org/site']!.secrets = ['FIREBASE_TOKEN', 'GCP_SA_KEY', 'GCP_SA_KEY_BACKUP', 'NPM_TOKEN'];
+    fakes.github.state.repos['octo-org/site']!.secrets = [
+      'FIREBASE_TOKEN',
+      'GCP_SA_KEY',
+      'GCP_SA_KEY_BACKUP',
+      'NPM_TOKEN',
+    ];
     const rt = await runtimeFor(fakes);
-    expect(await run('gh.legacy-secrets', rt)).toMatchObject({ status: 'warn', message: 'FIREBASE_TOKEN, GCP_SA_KEY still set' });
+    expect(await run('gh.legacy-secrets', rt)).toMatchObject({
+      status: 'warn',
+      message: 'FIREBASE_TOKEN, GCP_SA_KEY still set',
+    });
     expect((await run('gh.legacy-secrets', { ...rt, github: undefined })).status).toBe('skipped');
   });
 
   it('gh.oidc-sub', async () => {
     const fakes = createConfiguredFakes();
     const repo = fakes.github.state.repos['octo-org/site']!;
-    expect(await run('gh.oidc-sub', await runtimeFor(fakes))).toMatchObject({ status: 'pass', message: expect.stringContaining('default sub template') });
+    expect(await run('gh.oidc-sub', await runtimeFor(fakes))).toMatchObject({
+      status: 'pass',
+      message: expect.stringContaining('default sub template'),
+    });
 
-    repo.oidcSub = { use_default: false, include_claim_keys: ['repo', 'context', 'job_workflow_ref', 'actor', 'workflow'] };
+    repo.oidcSub = {
+      use_default: false,
+      include_claim_keys: ['repo', 'context', 'job_workflow_ref', 'actor', 'workflow'],
+    };
     expect(await run('gh.oidc-sub', await runtimeFor(fakes))).toMatchObject({
       status: 'warn',
       message: expect.stringContaining('customized sub (repo, context, job_workflow_ref, actor, workflow)'),
@@ -153,9 +215,16 @@ describe('GitHub checks', () => {
 
   it('gh.workflows', async () => {
     const rt = await runtimeFor();
-    const deploy = 'on: push\npermissions:\n  id-token: write\njobs:\n  d:\n    steps:\n      - uses: abraham/firebase-wif@v0\n      - run: firebase deploy\n';
-    expect(await run('gh.workflows', { ...rt, local: { workflows: { 'd.yml': deploy } } })).toEqual({ status: 'pass', message: '1 deploy job look right' });
-    expect(await run('gh.workflows', { ...rt, local: { workflows: { 'd.yml': 'jobs: [' } } })).toMatchObject({ status: 'warn', message: "couldn't parse d.yml" });
+    const deploy =
+      'on: push\npermissions:\n  id-token: write\njobs:\n  d:\n    steps:\n      - uses: abraham/firebase-wif@v0\n      - run: firebase deploy\n';
+    expect(await run('gh.workflows', { ...rt, local: { workflows: { 'd.yml': deploy } } })).toEqual({
+      status: 'pass',
+      message: '1 deploy job look right',
+    });
+    expect(await run('gh.workflows', { ...rt, local: { workflows: { 'd.yml': 'jobs: [' } } })).toMatchObject({
+      status: 'warn',
+      message: "couldn't parse d.yml",
+    });
     expect(await run('gh.workflows', { ...rt, local: { workflows: {} } })).toMatchObject({ status: 'skipped' });
   });
 });

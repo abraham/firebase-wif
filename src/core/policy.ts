@@ -12,7 +12,9 @@ export interface Policy {
 
 /** Only unconditional bindings count; conditional ones may not apply when a deploy runs. */
 export const hasMember = (policy: Policy, role: string, member: string): boolean =>
-  (policy.bindings ?? []).some((binding) => binding.role === role && !binding.condition && binding.members?.includes(member));
+  (policy.bindings ?? []).some(
+    (binding) => binding.role === role && !binding.condition && binding.members?.includes(member),
+  );
 
 export const rolesOf = (policy: Policy, member: string): string[] =>
   [

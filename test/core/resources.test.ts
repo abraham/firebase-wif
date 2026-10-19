@@ -51,7 +51,10 @@ describe('gcp.apis', () => {
     const fakes = createConfiguredFakes();
     const rt = await runtimeFor(fakes);
     fakes.google.state.forbidden = ['serviceusage'];
-    expect(await evaluate('gcp.apis', fakes, rt)).toMatchObject({ kind: 'skipped', message: expect.stringContaining('insufficient permission') });
+    expect(await evaluate('gcp.apis', fakes, rt)).toMatchObject({
+      kind: 'skipped',
+      message: expect.stringContaining('insufficient permission'),
+    });
   });
 });
 
@@ -83,7 +86,9 @@ describe('gcp.provider', () => {
     const provider = fakes.google.state.providers[fakes.names.provider]!;
 
     delete fakes.google.state.providers[fakes.names.provider];
-    expect(actions(await evaluate('gcp.provider', fakes, await runtimeFor(fakes)))).toEqual(['create: create provider github-987654321']);
+    expect(actions(await evaluate('gcp.provider', fakes, await runtimeFor(fakes)))).toEqual([
+      'create: create provider github-987654321',
+    ]);
 
     fakes.google.state.providers[fakes.names.provider] = { ...provider, state: 'DELETED' };
     expect(actions(await evaluate('gcp.provider', fakes, await runtimeFor(fakes)))).toEqual([
@@ -112,8 +117,14 @@ describe('gcp.provider', () => {
 describe('gcp.provider-condition', () => {
   it.each([
     [undefined, ['update: limit provider github-987654321 to octo-org/site (no attribute condition)']],
-    ["assertion.repository == 'octo-org/site'", ['update: pin provider github-987654321 to repository ID 987654321 instead of the name octo-org/site']],
-    ["assertion.repository_owner_id == '1234567'", ["update: limit provider github-987654321 to octo-org/site (condition doesn't pin a repository ID)"]],
+    [
+      "assertion.repository == 'octo-org/site'",
+      ['update: pin provider github-987654321 to repository ID 987654321 instead of the name octo-org/site'],
+    ],
+    [
+      "assertion.repository_owner_id == '1234567'",
+      ["update: limit provider github-987654321 to octo-org/site (condition doesn't pin a repository ID)"],
+    ],
     ["assertion.repository_id == '987654321'", 'ok'],
   ])('%s', async (condition, expected) => {
     const fakes = createConfiguredFakes();
@@ -164,7 +175,9 @@ describe('gcp.project-roles', () => {
   it('grants each missing role separately', async () => {
     const fakes = createConfiguredFakes({ presets: ['hosting', 'firestore'] });
     const rt = await runtimeFor(fakes);
-    fakes.google.state.projects[0]!.iamPolicy = { bindings: [{ role: 'roles/firebasehosting.admin', members: [`serviceAccount:${fakes.names.serviceAccount}`] }] };
+    fakes.google.state.projects[0]!.iamPolicy = {
+      bindings: [{ role: 'roles/firebasehosting.admin', members: [`serviceAccount:${fakes.names.serviceAccount}`] }],
+    };
     expect(actions(await evaluate('gcp.project-roles', fakes, rt))).toEqual(
       ['roles/datastore.indexAdmin', 'roles/firebaserules.admin', 'roles/serviceusage.serviceUsageConsumer'].map(
         (role) => `bind: grant ${role} on demo-project to ${fakes.names.serviceAccount}`,
@@ -188,7 +201,9 @@ describe('gcp.wi-user', () => {
     const fakes = createConfiguredFakes();
     const rt = await runtimeFor(fakes);
     fakes.google.state.serviceAccounts[fakes.names.serviceAccount]!.iamPolicy = {
-      bindings: [{ role: 'roles/iam.workloadIdentityUser', members: [fakes.names.principal.replace('987654321', '1')] }],
+      bindings: [
+        { role: 'roles/iam.workloadIdentityUser', members: [fakes.names.principal.replace('987654321', '1')] },
+      ],
     };
     expect((await evaluate('gcp.wi-user', fakes, rt)).kind).toBe('drift');
   });
@@ -218,7 +233,10 @@ describe('gh.variables', () => {
     const fakes = createConfiguredFakes();
     const rt = await runtimeFor(fakes);
     rt.variableValues.set('FIREBASE_WIF_PROVIDER', { kind: 'missing' });
-    rt.variableValues.set('FIREBASE_WIF_SERVICE_ACCOUNT', { kind: 'found', value: 'old@demo-project.iam.gserviceaccount.com' });
+    rt.variableValues.set('FIREBASE_WIF_SERVICE_ACCOUNT', {
+      kind: 'found',
+      value: 'old@demo-project.iam.gserviceaccount.com',
+    });
     expect(actions(await evaluate('gh.variables', fakes, rt))).toEqual([
       `set: set repo variable FIREBASE_WIF_PROVIDER to ${fakes.names.provider}`,
       `set: set repo variable FIREBASE_WIF_SERVICE_ACCOUNT to ${fakes.names.serviceAccount}`,
@@ -229,7 +247,10 @@ describe('gh.variables', () => {
     const fakes = createConfiguredFakes();
     const rt = await runtimeFor(fakes);
     rt.variableValues.set('FIREBASE_WIF_PROVIDER', { kind: 'skipped', reason: 'insufficient permission (x)' });
-    expect(await evaluate('gh.variables', fakes, rt)).toEqual({ kind: 'skipped', message: 'insufficient permission (x)' });
+    expect(await evaluate('gh.variables', fakes, rt)).toEqual({
+      kind: 'skipped',
+      message: 'insufficient permission (x)',
+    });
 
     expect(await evaluate('gh.variables', fakes, { ...rt, ctx: { ...rt.ctx, variables: false } })).toEqual({
       kind: 'skipped',
@@ -264,8 +285,13 @@ describe('gh.environment', () => {
       'create: allow main to deploy to production',
     ]);
 
-    env(fakes).production = { deployment_branch_policy: { protected_branches: true, custom_branch_policies: false }, branchPolicies: ['main'] };
-    expect(actions(await evaluate('gh.environment', fakes, rt))).toEqual(['update: limit production to selected branches']);
+    env(fakes).production = {
+      deployment_branch_policy: { protected_branches: true, custom_branch_policies: false },
+      branchPolicies: ['main'],
+    };
+    expect(actions(await evaluate('gh.environment', fakes, rt))).toEqual([
+      'update: limit production to selected branches',
+    ]);
   });
 
   it('skips when disabled, unreadable, or without GitHub', async () => {
@@ -277,6 +303,9 @@ describe('gh.environment', () => {
     });
     expect((await evaluate('gh.environment', fakes, { ...rt, github: undefined })).kind).toBe('skipped');
     fakes.github.state.forbidden = ['deployment-branch-policies'];
-    expect(await evaluate('gh.environment', fakes, rt)).toMatchObject({ kind: 'skipped', message: expect.stringContaining('insufficient permission') });
+    expect(await evaluate('gh.environment', fakes, rt)).toMatchObject({
+      kind: 'skipped',
+      message: expect.stringContaining('insufficient permission'),
+    });
   });
 });

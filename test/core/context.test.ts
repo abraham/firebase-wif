@@ -87,13 +87,19 @@ describe('resolveContext', () => {
       firebaseDir: root,
       gitRoot: root,
     });
-    expect(Object.keys(resolved.local.workflows ?? {})).toEqual(['.github/workflows/deploy.yml', '.github/workflows/preview.yaml']);
+    expect(Object.keys(resolved.local.workflows ?? {})).toEqual([
+      '.github/workflows/deploy.yml',
+      '.github/workflows/preview.yaml',
+    ]);
     expect(resolved.local.gitignore).toBe('node_modules\n');
     expect(resolved.local.firebaserc?.projects?.staging).toBe('demo-staging');
   });
 
   it('resolves aliases and explicit values', async () => {
-    const root = await tempRepo({ '.git/HEAD': '', '.firebaserc': JSON.stringify({ projects: { staging: 'demo-staging' } }) });
+    const root = await tempRepo({
+      '.git/HEAD': '',
+      '.firebaserc': JSON.stringify({ projects: { staging: 'demo-staging' } }),
+    });
     const alias = await resolveContext({ cwd: root, project: 'staging', repo: 'o/r', env: {}, exec: noExec });
     expect(alias.projectId).toBe('demo-staging');
     expect(alias.sources).toEqual({ projectId: '.firebaserc alias staging', repo: '--repo' });
@@ -110,7 +116,11 @@ describe('resolveContext', () => {
       env: { GCLOUD_PROJECT: 'env-project', GITHUB_REPOSITORY: 'o/r' },
       exec: noExec,
     });
-    expect(resolved).toMatchObject({ projectId: 'env-project', repo: 'o/r', sources: { projectId: 'GCLOUD_PROJECT', repo: 'GITHUB_REPOSITORY' } });
+    expect(resolved).toMatchObject({
+      projectId: 'env-project',
+      repo: 'o/r',
+      sources: { projectId: 'GCLOUD_PROJECT', repo: 'GITHUB_REPOSITORY' },
+    });
     expect(resolved.local.firebaseJson).toBeUndefined();
     expect(resolved.local.workflows).toEqual({});
   });
@@ -128,20 +138,28 @@ describe('resolveContext', () => {
 
   it("doesn't look for firebase.json above the git root", async () => {
     const outer = await tempRepo({ 'firebase.json': '{}', 'inner/.git/HEAD': '' });
-    const resolved = await resolveContext({ cwd: join(outer, 'inner'), project: 'p-123456', repo: 'o/r', env: {}, exec: noExec });
+    const resolved = await resolveContext({
+      cwd: join(outer, 'inner'),
+      project: 'p-123456',
+      repo: 'o/r',
+      env: {},
+      exec: noExec,
+    });
     expect(resolved.firebaseDir).toBeUndefined();
   });
 
   it('explains what is missing or broken', async () => {
     const root = await tempRepo({ '.git/HEAD': '' });
-    await expect(resolveContext({ cwd: root, env: {}, exec: noExec })).rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
+    await expect(resolveContext({ cwd: root, env: {}, exec: noExec })).rejects.toMatchObject({
+      code: 'PROJECT_NOT_FOUND',
+    });
     await expect(resolveContext({ cwd: root, project: 'p-123456', env: {}, exec: noExec })).rejects.toMatchObject({
       code: 'REPO_NOT_FOUND',
     });
 
     const broken = await tempRepo({ '.git/HEAD': '', 'firebase.json': '{ nope' });
-    await expect(resolveContext({ cwd: broken, project: 'p-123456', repo: 'o/r', env: {}, exec: noExec })).rejects.toThrow(
-      /firebase\.json is not valid JSON/,
-    );
+    await expect(
+      resolveContext({ cwd: broken, project: 'p-123456', repo: 'o/r', env: {}, exec: noExec }),
+    ).rejects.toThrow(/firebase\.json is not valid JSON/);
   });
 });

@@ -9,10 +9,7 @@ export interface GitHubClient {
   request<T>(method: string, path: string, body?: unknown): Promise<T>;
 }
 
-export type GoogleAuth =
-  | GoogleClient
-  | { accessToken: string }
-  | { getAccessToken: () => Promise<string> };
+export type GoogleAuth = GoogleClient | { accessToken: string } | { getAccessToken: () => Promise<string> };
 
 export type GitHubAuth = GitHubClient | { token: string };
 

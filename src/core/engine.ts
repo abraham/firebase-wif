@@ -84,9 +84,15 @@ const fetchRepo = async (client: GitHubClient, repo: string, authenticated: bool
   } catch (error) {
     rethrowAbort(error);
     const status = statusOf(error);
-    throw new FirebaseWifError('REPO_NOT_FOUND', `Could not read GitHub repository ${repo}${status ? ` (${status})` : ''}.`, {
-      fix: authenticated ? 'Check the repository name and your GitHub access.' : 'Private repositories need GitHub credentials: gh auth login.',
-    });
+    throw new FirebaseWifError(
+      'REPO_NOT_FOUND',
+      `Could not read GitHub repository ${repo}${status ? ` (${status})` : ''}.`,
+      {
+        fix: authenticated
+          ? 'Check the repository name and your GitHub access.'
+          : 'Private repositories need GitHub credentials: gh auth login.',
+      },
+    );
   }
 };
 
@@ -98,9 +104,13 @@ const fetchProjectNumber = async (google: GoogleClient, projectId: string): Prom
   } catch (error) {
     rethrowAbort(error);
     const status = statusOf(error);
-    throw new FirebaseWifError('PROJECT_NOT_FOUND', `Could not read Google Cloud project ${projectId}${status ? ` (${status})` : ''}.`, {
-      fix: 'Check the project ID and that your account can view it.',
-    });
+    throw new FirebaseWifError(
+      'PROJECT_NOT_FOUND',
+      `Could not read Google Cloud project ${projectId}${status ? ` (${status})` : ''}.`,
+      {
+        fix: 'Check the project ID and that your account can view it.',
+      },
+    );
   }
 };
 
@@ -112,13 +122,20 @@ const readVariables = async (
   const values = new Map<string, Read<string>>();
   if (!github || !names) return values;
   for (const name of [names.provider, names.serviceAccount]) {
-    const result = await read(() => github.request<{ value: string }>('GET', `/repos/${repo}/actions/variables/${name}`));
+    const result = await read(() =>
+      github.request<{ value: string }>('GET', `/repos/${repo}/actions/variables/${name}`),
+    );
     values.set(name, result.kind === 'found' ? { kind: 'found', value: result.value.value } : result);
   }
   return values;
 };
 
-const runPreflight = async (google: GoogleClient, ctx: Context, repo: RepoResource, github: boolean): Promise<Preflight> => {
+const runPreflight = async (
+  google: GoogleClient,
+  ctx: Context,
+  repo: RepoResource,
+  github: boolean,
+): Promise<Preflight> => {
   const needed = isCrossProject(ctx) ? CROSS_PROJECT_PERMISSIONS : SETUP_PERMISSIONS;
   let granted: string[] = [];
   try {
@@ -145,9 +162,15 @@ const linkedChain = (
 ): { provider?: string; serviceAccount?: string } => {
   if (options.home) {
     if (!parseProviderName(options.home.provider)) {
-      throw new FirebaseWifError('INVALID_NAME', `Invalid provider "${options.home.provider}": expected a full provider resource name.`);
+      throw new FirebaseWifError(
+        'INVALID_NAME',
+        `Invalid provider "${options.home.provider}": expected a full provider resource name.`,
+      );
     }
-    return { provider: options.home.provider, serviceAccount: validateServiceAccountEmail(options.home.serviceAccount) };
+    return {
+      provider: options.home.provider,
+      serviceAccount: validateServiceAccountEmail(options.home.serviceAccount),
+    };
   }
   const found = (name: string | undefined) => {
     const value = name ? values.get(name) : undefined;
@@ -241,9 +264,13 @@ const considerAdoption = async (
   project: { projectId: string; projectNumber: string },
 ): Promise<AdoptCandidate | undefined> => {
   if (!options.adopt || options.home || !github || !variables) return undefined;
-  if ([variables.provider, variables.serviceAccount].some((name) => values.get(name)?.kind !== 'missing')) return undefined;
+  if ([variables.provider, variables.serviceAccount].some((name) => values.get(name)?.kind !== 'missing'))
+    return undefined;
   const listed = await read(() =>
-    github.request<{ variables?: { name: string; value: string }[] }>('GET', `/repos/${options.repo}/actions/variables?per_page=30`),
+    github.request<{ variables?: { name: string; value: string }[] }>(
+      'GET',
+      `/repos/${options.repo}/actions/variables?per_page=30`,
+    ),
   );
   if (listed.kind !== 'found') return undefined;
   const candidate = findAdoptCandidate(listed.value.variables ?? [], project);
@@ -257,7 +284,10 @@ type Entry = { resource: Resource } | { advisory: Advisory };
 /** In a project that reuses another project's chain, only project-scoped resources are reconciled. */
 const evaluate = (resource: Resource, rt: Runtime): Promise<Outcome> =>
   resource.scope === 'trust-chain' && isCrossProject(rt.ctx)
-    ? Promise.resolve({ kind: 'skipped', message: `shared from ${rt.ctx.homeProjectId}; check it with --project ${rt.ctx.homeProjectId}` })
+    ? Promise.resolve({
+        kind: 'skipped',
+        message: `shared from ${rt.ctx.homeProjectId}; check it with --project ${rt.ctx.homeProjectId}`,
+      })
     : resource.evaluate(rt);
 
 const entries = (ctx: Context): Entry[] => {
@@ -322,7 +352,9 @@ const inspect = async (options: Options): Promise<Inspection> => {
       ? false
       : {
           provider: validateVariableName(options.variables?.provider ?? `${DEFAULT_VARIABLE_PREFIX}PROVIDER`),
-          serviceAccount: validateVariableName(options.variables?.serviceAccount ?? `${DEFAULT_VARIABLE_PREFIX}SERVICE_ACCOUNT`),
+          serviceAccount: validateVariableName(
+            options.variables?.serviceAccount ?? `${DEFAULT_VARIABLE_PREFIX}SERVICE_ACCOUNT`,
+          ),
         };
 
   const { signal } = options;
@@ -332,7 +364,10 @@ const inspect = async (options: Options): Promise<Inspection> => {
   const repo = await fetchRepo(github ?? withSignal(createGitHubClient(), signal), options.repo, Boolean(github));
   const projectNumber = await fetchProjectNumber(google, options.projectId);
   const values = await readVariables(github, options.repo, variables);
-  const adopted = await considerAdoption(options, github, variables, values, { projectId: options.projectId, projectNumber });
+  const adopted = await considerAdoption(options, github, variables, values, {
+    projectId: options.projectId,
+    projectNumber,
+  });
   const ctx = buildContext(options, repo, projectNumber, variables, values, adopted);
   const preflight = await runPreflight(google, ctx, repo, Boolean(github));
 
@@ -382,27 +417,40 @@ export const status = async (options: Options): Promise<StatusReport> => (await 
 export const assertCanApply = (changes: Change[], preflight: Preflight) => {
   const { missingPermissions } = preflight;
   if (!missingPermissions.length || !changes.some((c) => !c.manual && c.resource.startsWith('gcp.'))) return;
-  throw new FirebaseWifError('MISSING_PERMISSIONS', `You're missing permissions that setup needs: ${missingPermissions.join(', ')}.`, {
-    fix: 'Ask a project owner to run firebase-wif setup.',
-    details: { missingPermissions },
-  });
+  throw new FirebaseWifError(
+    'MISSING_PERMISSIONS',
+    `You're missing permissions that setup needs: ${missingPermissions.join(', ')}.`,
+    {
+      fix: 'Ask a project owner to run firebase-wif setup.',
+      details: { missingPermissions },
+    },
+  );
 };
 
 const applyError = (error: unknown, failed: Change, applied: Change[]): unknown => {
   if ((error as Error | undefined)?.name === 'AbortError') return error;
   const done = applied.length ? ` Already applied: ${applied.map((c) => c.description).join('; ')}.` : '';
   const details = { failed, applied: [...applied] };
-  if (error instanceof FirebaseWifError) return new FirebaseWifError(error.code, `${error.message}${done}`, { fix: error.fix, details });
+  if (error instanceof FirebaseWifError)
+    return new FirebaseWifError(error.code, `${error.message}${done}`, { fix: error.fix, details });
   const status = statusOf(error);
   const reason = error instanceof Error ? error.message.slice(0, 200) : 'unknown error';
-  return new FirebaseWifError('APPLY_FAILED', `Couldn't ${failed.description}${status ? ` (${status})` : ''}: ${reason}.${done}`, {
-    fix: 'Fix the cause, then re-run firebase-wif setup; every step is safe to repeat.',
-    details,
-  });
+  return new FirebaseWifError(
+    'APPLY_FAILED',
+    `Couldn't ${failed.description}${status ? ` (${status})` : ''}: ${reason}.${done}`,
+    {
+      fix: 'Fix the cause, then re-run firebase-wif setup; every step is safe to repeat.',
+      details,
+    },
+  );
 };
 
 /** Re-reads and applies each resource in order, then re-runs status. */
-const applyChanges = async (options: Options, inspection: Inspection, signal: AbortSignal | undefined): Promise<ApplyResult> => {
+const applyChanges = async (
+  options: Options,
+  inspection: Inspection,
+  signal: AbortSignal | undefined,
+): Promise<ApplyResult> => {
   const { runtime: base, report } = inspection;
   assertCanApply(report.changes, report.preflight);
   const google = withSignal(base.google, signal);
@@ -427,11 +475,19 @@ const applyChanges = async (options: Options, inspection: Inspection, signal: Ab
         github,
         memo: createMemo(),
         variableValues:
-          resource.id === 'gh.variables' ? await readVariables(github, base.ctx.repo, base.ctx.variables) : base.variableValues,
+          resource.id === 'gh.variables'
+            ? await readVariables(github, base.ctx.repo, base.ctx.variables)
+            : base.variableValues,
       };
       const outcome = await evaluate(resource, rt);
-      if (outcome.kind === 'blocked') throw applyError(outcome.error, { resource: resource.id, action: 'update', description: outcome.message }, applied);
-      const changes = outcome.kind === 'drift' ? outcome.changes : outcome.kind === 'skipped' ? (outcome.changes ?? []) : [];
+      if (outcome.kind === 'blocked')
+        throw applyError(
+          outcome.error,
+          { resource: resource.id, action: 'update', description: outcome.message },
+          applied,
+        );
+      const changes =
+        outcome.kind === 'drift' ? outcome.changes : outcome.kind === 'skipped' ? (outcome.changes ?? []) : [];
       pending = changes.filter((c) => c.manual);
       const automatic = changes.filter((c) => !c.manual);
       if (!automatic.length) break;

@@ -81,7 +81,12 @@ const isConflict = (error: unknown) =>
 export const updatePolicy = (
   w: Writer,
   google: GoogleClient,
-  { resource, getBody, label, change }: {
+  {
+    resource,
+    getBody,
+    label,
+    change,
+  }: {
     /** Full URL without the `:getIamPolicy` suffix. */
     resource: string;
     getBody?: unknown;

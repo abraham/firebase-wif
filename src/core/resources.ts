@@ -74,7 +74,9 @@ const isManaged = async (rt: Runtime): Promise<boolean> => {
 /** Roles `--prune` removes: unconditional, unrequested, and only from a managed service account. */
 const prunable = async (rt: Runtime, policy: Read<Policy>): Promise<string[]> => {
   if (!rt.prune || policy.kind !== 'found') return [];
-  const extra = rolesOf(policy.value, `serviceAccount:${rt.ctx.serviceAccount}`).filter((role) => !rt.ctx.roles.includes(role));
+  const extra = rolesOf(policy.value, `serviceAccount:${rt.ctx.serviceAccount}`).filter(
+    (role) => !rt.ctx.roles.includes(role),
+  );
   return extra.length && (await isManaged(rt)) ? extra : [];
 };
 
@@ -84,7 +86,8 @@ const apis: Resource = {
   scope: 'project',
   async evaluate(rt) {
     const services = await readServices(rt);
-    if (services.kind !== 'found') return { kind: 'skipped', message: services.kind === 'skipped' ? services.reason : 'unknown' };
+    if (services.kind !== 'found')
+      return { kind: 'skipped', message: services.kind === 'skipped' ? services.reason : 'unknown' };
     const disabled = [...services.value].filter(([, on]) => !on).map(([api]) => api);
     if (!disabled.length) return { kind: 'ok', message: `${services.value.size}/${services.value.size} enabled` };
     return drift([change(this.id, 'enable', `enable ${disabled.join(', ')}`)]);
@@ -130,7 +133,9 @@ const pool: Resource = {
     } else if (current.kind === 'found' && current.value.state === 'DELETED') {
       operation = await rt.google.request<Operation>('POST', `${IAM}/${rt.ctx.pool}:undelete`, {});
     } else if (current.kind === 'found' && current.value.disabled) {
-      operation = await rt.google.request<Operation>('PATCH', `${IAM}/${rt.ctx.pool}?updateMask=disabled`, { disabled: false });
+      operation = await rt.google.request<Operation>('PATCH', `${IAM}/${rt.ctx.pool}?updateMask=disabled`, {
+        disabled: false,
+      });
     } else {
       return;
     }
@@ -157,7 +162,12 @@ const provider: Resource = {
     if (value.oidc?.issuerUri !== ISSUER) {
       const message = `Provider ${id} uses issuer ${value.oidc?.issuerUri ?? '(none)'}, not GitHub Actions.`;
       const fix = 'Pass --provider with a different provider ID.';
-      return { kind: 'blocked', message, fix, error: new FirebaseWifError('PROVIDER_OWNED_BY_OTHER_REPO', message, { fix }) };
+      return {
+        kind: 'blocked',
+        message,
+        fix,
+        error: new FirebaseWifError('PROVIDER_OWNED_BY_OTHER_REPO', message, { fix }),
+      };
     }
     const changes: Change[] = [];
     if (value.disabled) changes.push(change(this.id, 'update', `re-enable provider ${id}`));
@@ -190,7 +200,11 @@ const provider: Resource = {
         body.attributeMapping = mapping;
       }
       if (!mask.length) return;
-      operation = await rt.google.request<Operation>('PATCH', `${IAM}/${rt.ctx.provider}?updateMask=${mask.join(',')}`, body);
+      operation = await rt.google.request<Operation>(
+        'PATCH',
+        `${IAM}/${rt.ctx.provider}?updateMask=${mask.join(',')}`,
+        body,
+      );
     } else {
       return;
     }
@@ -238,21 +252,34 @@ const providerCondition: Resource = {
         return { kind: 'ok', message: `only accepts ${repo} (id ${repoId})` };
       case 'other-repo': {
         const message = `Provider ${id} trusts another repository (${analysis.other}).`;
-        const fix = 'Pass --provider with a different provider ID; never re-point another repo\'s provider.';
-        return { kind: 'blocked', message, fix, error: new FirebaseWifError('PROVIDER_OWNED_BY_OTHER_REPO', message, { fix }) };
+        const fix = "Pass --provider with a different provider ID; never re-point another repo's provider.";
+        return {
+          kind: 'blocked',
+          message,
+          fix,
+          error: new FirebaseWifError('PROVIDER_OWNED_BY_OTHER_REPO', message, { fix }),
+        };
       }
       case 'missing':
         return drift([change(this.id, 'update', `limit provider ${id} to ${repo} (no attribute condition)`)]);
       case 'name-only':
-        return drift([change(this.id, 'update', `pin provider ${id} to repository ID ${repoId} instead of the name ${repo}`)]);
+        return drift([
+          change(this.id, 'update', `pin provider ${id} to repository ID ${repoId} instead of the name ${repo}`),
+        ]);
       case 'loose':
-        return drift([change(this.id, 'update', `limit provider ${id} to ${repo} (condition doesn't pin a repository ID)`)]);
+        return drift([
+          change(this.id, 'update', `limit provider ${id} to ${repo} (condition doesn't pin a repository ID)`),
+        ]);
     }
   },
   async apply(rt, w) {
-    const operation = await rt.google.request<Operation>('PATCH', `${IAM}/${rt.ctx.provider}?updateMask=attributeCondition`, {
-      attributeCondition: desiredAttributeCondition(rt.ctx.repoId, rt.ctx.ownerId),
-    });
+    const operation = await rt.google.request<Operation>(
+      'PATCH',
+      `${IAM}/${rt.ctx.provider}?updateMask=attributeCondition`,
+      {
+        attributeCondition: desiredAttributeCondition(rt.ctx.repoId, rt.ctx.ownerId),
+      },
+    );
     await waitForOperation(w, rt.google, IAM, operation, `limit provider ${providerId(rt.ctx)} to ${rt.ctx.repo}`);
   },
 };
@@ -275,7 +302,10 @@ const serviceAccount: Resource = {
     if (current.kind === 'missing') {
       await rt.google.request('POST', `${IAM}/projects/${serviceAccountProject(email) ?? projectId}/serviceAccounts`, {
         accountId: email.split('@')[0],
-        serviceAccount: { displayName: `GitHub Actions: ${repo}`.slice(0, 100), description: managedDescription(repo, repoId) },
+        serviceAccount: {
+          displayName: `GitHub Actions: ${repo}`.slice(0, 100),
+          description: managedDescription(repo, repoId),
+        },
       });
       w.createdServiceAccount = true;
     } else if (current.kind === 'found' && current.value.disabled) {
@@ -299,7 +329,8 @@ const projectRoles: Resource = {
       ...missing.map((role) => change(this.id, 'bind', `grant ${role} on ${projectId} to ${email}`)),
       ...extra.map((role) => change(this.id, 'unbind', `remove ${role} on ${projectId} from ${email}`)),
     ];
-    if (!changes.length) return { kind: 'ok', message: `${roles.length} role${roles.length === 1 ? '' : 's'} on ${projectId}` };
+    if (!changes.length)
+      return { kind: 'ok', message: `${roles.length} role${roles.length === 1 ? '' : 's'} on ${projectId}` };
     return drift(changes);
   },
   async apply(rt, w) {
@@ -504,7 +535,8 @@ const environment: Resource = {
     const branches = await readBranchPolicies(rt, env.name);
     if (branches.kind === 'skipped') return { kind: 'skipped', message: branches.reason };
     const names = branches.kind === 'found' ? (branches.value.branch_policies ?? []).map((p) => p.name) : [];
-    if (!names.includes(env.branch)) changes.push(change(this.id, 'create', `allow ${env.branch} to deploy to ${env.name}`, manual));
+    if (!names.includes(env.branch))
+      changes.push(change(this.id, 'create', `allow ${env.branch} to deploy to ${env.name}`, manual));
     if (!changes.length) return { kind: 'ok', message: `${env.name} only deploys from ${env.branch}` };
     return drift(changes, manual ? ADMIN_FIX : undefined);
   },

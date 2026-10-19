@@ -12,7 +12,9 @@ describe('estimateSub', () => {
   });
 
   it('treats an empty claim list as the default template', () => {
-    expect(estimateSub({ useDefault: false, includeClaimKeys: [] }, params).longest).toBe('repo:octo-org/site:environment:production');
+    expect(estimateSub({ useDefault: false, includeClaimKeys: [] }, params).longest).toBe(
+      'repo:octo-org/site:environment:production',
+    );
   });
 
   it('considers branch and pull request jobs without an environment', () => {
@@ -40,11 +42,16 @@ describe('estimateSub', () => {
   });
 
   it('estimates unknown claims with a placeholder', () => {
-    expect(estimateSub({ useDefault: false, includeClaimKeys: ['actor'] }, params).longest).toBe(`actor:${'x'.repeat(40)}`);
+    expect(estimateSub({ useDefault: false, includeClaimKeys: ['actor'] }, params).longest).toBe(
+      `actor:${'x'.repeat(40)}`,
+    );
   });
 
   it('counts bytes, not characters', () => {
-    const estimate = estimateSub({ useDefault: true, includeClaimKeys: [] }, { ...params, environment: 'production-é' });
+    const estimate = estimateSub(
+      { useDefault: true, includeClaimKeys: [] },
+      { ...params, environment: 'production-é' },
+    );
     expect(estimate.longest).toBe('repo:octo-org/site:environment:production-é');
     expect(estimate.bytes).toBe(estimate.longest.length + 1);
   });

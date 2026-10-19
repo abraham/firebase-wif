@@ -116,7 +116,10 @@ export const createFakeGoogle = (seed: Partial<FakeGoogleState> = {}): FakeGoogl
 
   const requireService = (projectIdOrNumber: string, service: string) => {
     if (!project(projectIdOrNumber).enabledServices.includes(service)) {
-      throw new HttpError(403, `${service} has not been used in project ${projectIdOrNumber} before or it is disabled.`);
+      throw new HttpError(
+        403,
+        `${service} has not been used in project ${projectIdOrNumber} before or it is disabled.`,
+      );
     }
   };
 
@@ -250,19 +253,28 @@ export const createFakeGoogle = (seed: Partial<FakeGoogleState> = {}): FakeGoogl
         return { email, ...fields };
       }
 
-      const account = /^projects\/[^/]+\/serviceAccounts\/([^/:]+)(\/keys|:getIamPolicy|:setIamPolicy|:enable)?$/.exec(path);
+      const account = /^projects\/[^/]+\/serviceAccounts\/([^/:]+)(\/keys|:getIamPolicy|:setIamPolicy|:enable)?$/.exec(
+        path,
+      );
       if (account) {
         const email = account[1]!;
         const target = serviceAccount(email);
         switch (`${method} ${account[2] ?? ''}`) {
           case 'GET ':
-            return { email, disabled: target.disabled ?? false, displayName: target.displayName, description: target.description };
+            return {
+              email,
+              disabled: target.disabled ?? false,
+              displayName: target.displayName,
+              description: target.description,
+            };
           case 'POST :enable':
             target.disabled = false;
             return {};
           case 'GET /keys':
             // The fake only stores user-managed keys, which is all firebase-wif asks for.
-            return { keys: (target.keys ?? []).map((id) => ({ name: `projects/-/serviceAccounts/${email}/keys/${id}` })) };
+            return {
+              keys: (target.keys ?? []).map((id) => ({ name: `projects/-/serviceAccounts/${email}/keys/${id}` })),
+            };
           case 'POST :getIamPolicy':
             return getPolicy(target.iamPolicy ?? {});
           case 'POST :setIamPolicy':
@@ -280,14 +292,19 @@ export const createFakeGoogle = (seed: Partial<FakeGoogleState> = {}): FakeGoogl
         const id = url.searchParams.get('workloadIdentityPoolId') ?? '';
         return createIn(state.pools, poolName(projectNumber, id), body as FakePool);
       }
-      const providers = /^(projects\/[^/]+\/locations\/global\/workloadIdentityPools\/[^/]+)\/providers$/.exec(resource);
+      const providers = /^(projects\/[^/]+\/locations\/global\/workloadIdentityPools\/[^/]+)\/providers$/.exec(
+        resource,
+      );
       if (providers && method === 'POST') {
         const pool = resourceName(providers[1]!, 'pool')!;
         if (!state.pools[pool] || state.pools[pool].state === 'DELETED') throw notFound(pool);
         const value = body as FakeProvider;
         const issuer = value.oidc?.issuerUri ?? '';
         if (state.allowedIssuers && !state.allowedIssuers.includes(issuer)) {
-          throw new HttpError(400, `Org Policy violated for value: '${issuer}'. Constraint: constraints/iam.workloadIdentityPoolProviders.`);
+          throw new HttpError(
+            400,
+            `Org Policy violated for value: '${issuer}'. Constraint: constraints/iam.workloadIdentityPoolProviders.`,
+          );
         }
         const id = url.searchParams.get('workloadIdentityPoolProviderId') ?? '';
         return createIn(state.providers, `${pool}/providers/${id}`, value);
@@ -316,7 +333,8 @@ export const createFakeGoogle = (seed: Partial<FakeGoogleState> = {}): FakeGoogl
     calls,
     async request<T>(method: string, url: string, body?: unknown): Promise<T> {
       calls.push(body === undefined ? { method, url } : { method, url, body: clone(body) });
-      if (state.forbidden.some((fragment) => url.includes(fragment))) throw new HttpError(403, 'The caller does not have permission');
+      if (state.forbidden.some((fragment) => url.includes(fragment)))
+        throw new HttpError(403, 'The caller does not have permission');
       const failure = injectedFailure(method, url);
       if (failure) throw failure;
       return clone(route(method, new URL(url), body)) as T;

@@ -25,7 +25,9 @@ const isInside = (child: string, parent: string) => {
 
 const defaultProject = async (dir: string): Promise<string | undefined> => {
   try {
-    const firebaserc = JSON.parse(await readFile(join(dir, '.firebaserc'), 'utf8')) as { projects?: { default?: unknown } };
+    const firebaserc = JSON.parse(await readFile(join(dir, '.firebaserc'), 'utf8')) as {
+      projects?: { default?: unknown };
+    };
     return typeof firebaserc.projects?.default === 'string' ? firebaserc.projects.default : undefined;
   } catch {
     return undefined;
@@ -33,7 +35,13 @@ const defaultProject = async (dir: string): Promise<string | undefined> => {
 };
 
 /** Writes Google credentials for this job and exports them for later steps. Returns the exit code. */
-export const runMain = async ({ env = process.env, stdout, fetch, cwd = process.cwd(), randomId = randomUUID }: ActionDeps = {}): Promise<number> => {
+export const runMain = async ({
+  env = process.env,
+  stdout,
+  fetch,
+  cwd = process.cwd(),
+  randomId = randomUUID,
+}: ActionDeps = {}): Promise<number> => {
   const core = createCore({ env, stdout });
   try {
     if ((env.GITHUB_SERVER_URL ?? 'https://github.com').replace(/\/$/, '') !== 'https://github.com') {
@@ -65,7 +73,9 @@ export const runMain = async ({ env = process.env, stdout, fetch, cwd = process.
     if (!env.RUNNER_TEMP) throw new Error('RUNNER_TEMP is not set; this must run inside GitHub Actions.');
     const temp = resolve(cwd, env.RUNNER_TEMP);
     if (isInside(temp, workspace)) {
-      throw new Error('RUNNER_TEMP is inside GITHUB_WORKSPACE, so the credentials file could end up in a deploy, artifact, or commit.');
+      throw new Error(
+        'RUNNER_TEMP is inside GITHUB_WORKSPACE, so the credentials file could end up in a deploy, artifact, or commit.',
+      );
     }
     const path = join(temp, `firebase-wif-${randomId()}.json`);
     await writeFile(path, json, { mode: 0o600, flag: 'wx' });
@@ -78,10 +88,15 @@ export const runMain = async ({ env = process.env, stdout, fetch, cwd = process.
     }
 
     if (exportEnvironment) {
-      for (const name of ['GOOGLE_APPLICATION_CREDENTIALS', 'CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE', 'GOOGLE_GHA_CREDS_PATH']) {
+      for (const name of [
+        'GOOGLE_APPLICATION_CREDENTIALS',
+        'CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE',
+        'GOOGLE_GHA_CREDS_PATH',
+      ]) {
         core.exportVariable(name, path);
       }
-      for (const name of ['GOOGLE_CLOUD_PROJECT', 'GCLOUD_PROJECT', 'CLOUDSDK_CORE_PROJECT']) core.exportVariable(name, projectId);
+      for (const name of ['GOOGLE_CLOUD_PROJECT', 'GCLOUD_PROJECT', 'CLOUDSDK_CORE_PROJECT'])
+        core.exportVariable(name, projectId);
     }
     core.setOutput('credentials_file_path', path);
     core.setOutput('credentials_json', json);

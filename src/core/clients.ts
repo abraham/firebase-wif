@@ -80,11 +80,9 @@ export const createGitHubClient = ({
   },
 });
 
-const isGoogleClient = (auth: GoogleAuth): auth is GoogleClient =>
-  typeof (auth as GoogleClient).request === 'function';
+const isGoogleClient = (auth: GoogleAuth): auth is GoogleClient => typeof (auth as GoogleClient).request === 'function';
 
-const isGitHubClient = (auth: GitHubAuth): auth is GitHubClient =>
-  typeof (auth as GitHubClient).request === 'function';
+const isGitHubClient = (auth: GitHubAuth): auth is GitHubClient => typeof (auth as GitHubClient).request === 'function';
 
 const tryExec = async (exec: Exec, file: string, args: string[]): Promise<string | undefined> => {
   try {
@@ -129,7 +127,11 @@ export const defaultGoogleClient = async ({
         fetch,
         getAccessToken: async () => {
           const { token } = await client.getAccessToken();
-          if (!token) throw new FirebaseWifError('NO_GOOGLE_CREDENTIALS', 'Application Default Credentials returned no access token.');
+          if (!token)
+            throw new FirebaseWifError(
+              'NO_GOOGLE_CREDENTIALS',
+              'Application Default Credentials returned no access token.',
+            );
           return token;
         },
       });

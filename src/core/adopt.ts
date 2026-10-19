@@ -16,7 +16,8 @@ export const findAdoptCandidate = (
   project: { projectId: string; projectNumber: string },
 ): AdoptCandidate | undefined => {
   const values = new Map(variables.map(({ name, value }) => [name, value.trim()]));
-  const isProvider = (value: string | undefined) => parseProviderName(value ?? '')?.projectNumber === project.projectNumber;
+  const isProvider = (value: string | undefined) =>
+    parseProviderName(value ?? '')?.projectNumber === project.projectNumber;
   const isAccount = (value: string | undefined) => serviceAccountProject(value ?? '') === project.projectId;
 
   const pairs = [

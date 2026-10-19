@@ -84,7 +84,10 @@ var stsError = (status, body) => {
     return fail("The provider's attribute condition doesn't allow this repository.", SETUP_FIX);
   }
   if (code === "invalid_target") {
-    return fail("The workload identity pool or provider doesn't exist or is disabled.", `Check workload_identity_provider. ${STATUS_FIX}`);
+    return fail(
+      "The workload identity pool or provider doesn't exist or is disabled.",
+      `Check workload_identity_provider. ${STATUS_FIX}`
+    );
   }
   return fail(`Google STS rejected the GitHub token (${code}${description ? `: ${description}` : ""}).`, STATUS_FIX);
 };
@@ -101,13 +104,19 @@ var impersonationError = (status, body, serviceAccount) => {
   if (status === 404) {
     return fail(`Service account ${serviceAccount} doesn't exist.`, `Check service_account. ${SETUP_FIX}`);
   }
-  return fail(`Couldn't get an access token for ${serviceAccount} (${status}${message ? `: ${message}` : ""}).`, STATUS_FIX);
+  return fail(
+    `Couldn't get an access token for ${serviceAccount} (${status}${message ? `: ${message}` : ""}).`,
+    STATUS_FIX
+  );
 };
 var verifyCredentials = async (config, { signal, fetch = globalThis.fetch } = {}) => {
   const oidc = await fetch(config.credential_source.url, { headers: config.credential_source.headers, signal });
   const oidcBody = await readBody(oidc);
   if (!oidc.ok || typeof oidcBody.value !== "string") {
-    throw failure("oidc", oidc.status)(`Couldn't get an OIDC token from GitHub (${oidc.status}).`, "Add `permissions: id-token: write` to the job.");
+    throw failure("oidc", oidc.status)(
+      `Couldn't get an OIDC token from GitHub (${oidc.status}).`,
+      "Add `permissions: id-token: write` to the job."
+    );
   }
   const sts = await fetch(config.token_url, {
     method: "POST",
@@ -197,7 +206,13 @@ var defaultProject = async (dir) => {
     return void 0;
   }
 };
-var runMain = async ({ env = process.env, stdout, fetch, cwd = process.cwd(), randomId = randomUUID2 } = {}) => {
+var runMain = async ({
+  env = process.env,
+  stdout,
+  fetch,
+  cwd = process.cwd(),
+  randomId = randomUUID2
+} = {}) => {
   const core = createCore({ env, stdout });
   try {
     if ((env.GITHUB_SERVER_URL ?? "https://github.com").replace(/\/$/, "") !== "https://github.com") {
@@ -226,7 +241,9 @@ var runMain = async ({ env = process.env, stdout, fetch, cwd = process.cwd(), ra
     if (!env.RUNNER_TEMP) throw new Error("RUNNER_TEMP is not set; this must run inside GitHub Actions.");
     const temp = resolve(cwd, env.RUNNER_TEMP);
     if (isInside(temp, workspace)) {
-      throw new Error("RUNNER_TEMP is inside GITHUB_WORKSPACE, so the credentials file could end up in a deploy, artifact, or commit.");
+      throw new Error(
+        "RUNNER_TEMP is inside GITHUB_WORKSPACE, so the credentials file could end up in a deploy, artifact, or commit."
+      );
     }
     const path = join(temp, `firebase-wif-${randomId()}.json`);
     await writeFile(path, json, { mode: 384, flag: "wx" });
@@ -237,10 +254,15 @@ var runMain = async ({ env = process.env, stdout, fetch, cwd = process.cwd(), ra
       core.info(`Verified that this job can act as ${serviceAccount}.`);
     }
     if (exportEnvironment) {
-      for (const name of ["GOOGLE_APPLICATION_CREDENTIALS", "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE", "GOOGLE_GHA_CREDS_PATH"]) {
+      for (const name of [
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE",
+        "GOOGLE_GHA_CREDS_PATH"
+      ]) {
         core.exportVariable(name, path);
       }
-      for (const name of ["GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT", "CLOUDSDK_CORE_PROJECT"]) core.exportVariable(name, projectId);
+      for (const name of ["GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT", "CLOUDSDK_CORE_PROJECT"])
+        core.exportVariable(name, projectId);
     }
     core.setOutput("credentials_file_path", path);
     core.setOutput("credentials_json", json);
