@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { parseGitHubRemote, resolveContext } from '../../src/core/context.js';
+import { parseGitHubRemote, projectAliases, resolveContext } from '../../src/core/context.js';
 import { FirebaseWifError } from '../../src/core/errors.js';
 
 const tempRepo = async (files: Record<string, string>) => {
@@ -37,6 +37,27 @@ describe('parseGitHubRemote', () => {
   it('rejects other hosts', () => {
     expect(() => parseGitHubRemote('git@github.example.com:o/r.git')).toThrow(FirebaseWifError);
     expect(() => parseGitHubRemote('https://gitlab.com/o/r.git')).toThrow(/gitlab\.com/);
+  });
+});
+
+describe('projectAliases', () => {
+  it('lists each project once, default first', async () => {
+    const root = await tempRepo({
+      '.git/HEAD': '',
+      'site/.firebaserc': JSON.stringify({
+        projects: { staging: 'demo-staging', default: 'demo-project', prod: 'demo-project', qa: 'demo-qa' },
+      }),
+    });
+    expect(await projectAliases({ cwd: join(root, 'site') })).toEqual([
+      { alias: 'default', projectId: 'demo-project' },
+      { alias: 'staging', projectId: 'demo-staging' },
+      { alias: 'qa', projectId: 'demo-qa' },
+    ]);
+  });
+
+  it('is empty without .firebaserc', async () => {
+    const root = await tempRepo({ '.git/HEAD': '' });
+    expect(await projectAliases({ cwd: root })).toEqual([]);
   });
 });
 

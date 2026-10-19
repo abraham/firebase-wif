@@ -48,6 +48,9 @@ describe('local checks', () => {
     expect(await run('local.project-match', { ...rt, local: {} })).toMatchObject({ status: 'warn', fix: 'firebase use --add demo-project' });
     expect((await run('local.project-match', { ...rt, local: { firebaserc: { projects: { default: 'demo-project' } } } })).status).toBe('pass');
     expect((await run('local.project-match', { ...rt, local: { firebaserc: { projects: { default: 'other-project' } } } })).status).toBe('warn');
+    expect(
+      await run('local.project-match', { ...rt, local: { firebaserc: { projects: { default: 'other-project', staging: 'demo-project' } } } }),
+    ).toEqual({ status: 'pass', message: 'alias staging is demo-project' });
   });
 
   it('local.creds-ignored', async () => {

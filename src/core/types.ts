@@ -47,6 +47,11 @@ export interface Options {
   runtimeServiceAccounts?: string[];
   names?: { pool?: string; provider?: string; serviceAccount?: string };
   variables?: { provider: string; serviceAccount: string } | false;
+  /**
+   * An existing provider resource name and SA email to use instead of the ones the repo variables
+   * point at. When they're in another project, only that project's APIs and roles are reconciled.
+   */
+  home?: { provider: string; serviceAccount: string };
   /** `branch` defaults to the repo's default branch. */
   environment?: { name: string; branch?: string } | false;
   prune?: boolean;

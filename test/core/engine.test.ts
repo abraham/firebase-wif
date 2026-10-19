@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SETUP_PERMISSIONS } from '../../src/core/engine.js';
+import { CROSS_PROJECT_PERMISSIONS, SETUP_PERMISSIONS } from '../../src/core/engine.js';
 import { desiredAttributeCondition, desiredAttributeMapping, ISSUER } from '../../src/core/naming.js';
 import { plan, setup, status } from '../../src/index.js';
 import type { ApplyResult, Options, ProgressEvent, SetupResult, StatusReport } from '../../src/index.js';
@@ -709,5 +709,110 @@ describe('setup', () => {
       FIREBASE_WIF_SERVICE_ACCOUNT: legacyAccount,
     });
     expect(fakes.google.state.providers[legacyProvider]!.attributeCondition).toBe(desiredAttributeCondition(987654321, 1234567));
+  });
+});
+
+const STAGING = { projectId: 'staging-project', projectNumber: '222222222222' };
+
+const addStaging = (fakes: ConfiguredFakes) => {
+  const staging = { ...STAGING, enabledServices: [] as string[], iamPolicy: { bindings: [] } };
+  fakes.google.state.projects.push(staging);
+  return staging;
+};
+
+describe('multiple projects', () => {
+  it("reuses the home project's trust chain and only reconciles APIs and roles", async () => {
+    const fakes = createConfiguredFakes();
+    const staging = addStaging(fakes);
+    const options = { ...fakes.options, projectId: STAGING.projectId };
+
+    const report = await run(fakes, options);
+    expect(report.context).toMatchObject({
+      projectId: 'staging-project',
+      homeProjectId: 'demo-project',
+      pool: fakes.names.pool,
+      provider: fakes.names.provider,
+      serviceAccount: fakes.names.serviceAccount,
+    });
+    expect(report.context.apis).not.toContain('sts.googleapis.com');
+    expect(report.context.apis).not.toContain('iamcredentials.googleapis.com');
+    for (const id of ['gcp.pool', 'gcp.provider', 'gcp.provider-condition', 'gcp.service-account', 'gcp.wi-user', 'gh.variables', 'gh.environment']) {
+      expect(check(report, id), id).toMatchObject({ status: 'skipped', message: 'shared from demo-project; check it with --project demo-project' });
+    }
+    expect(report.changes.map((c) => `${c.resource} ${c.action}`)).toEqual(['gcp.apis enable', 'gcp.project-roles bind']);
+    expect(fakes.google.calls).toContainEqual(
+      expect.objectContaining({ url: expect.stringContaining('staging-project:testIamPermissions'), body: { permissions: [...CROSS_PROJECT_PERMISSIONS] } }),
+    );
+    expectConsistent(report);
+
+    const result = applied(await setupWith(fakes, options));
+    expect(result.applied.map((c) => c.description)).toEqual([
+      'enable cloudresourcemanager.googleapis.com, firebasehosting.googleapis.com, iam.googleapis.com',
+      `grant roles/firebasehosting.admin on staging-project to ${fakes.names.serviceAccount}`,
+    ]);
+    expect(staging.iamPolicy).toEqual({ version: 1, etag: 'BwX1', bindings: [{ role: 'roles/firebasehosting.admin', members: [`serviceAccount:${fakes.names.serviceAccount}`] }] });
+    expect(Object.keys(fakes.google.state.pools)).toEqual([fakes.names.pool]);
+    expect(Object.keys(fakes.google.state.serviceAccounts)).toEqual([fakes.names.serviceAccount]);
+    expect(fakes.github.state.repos['octo-org/site']!.variables).toEqual({
+      FIREBASE_WIF_PROVIDER: fakes.names.provider,
+      FIREBASE_WIF_SERVICE_ACCOUNT: fakes.names.serviceAccount,
+    });
+    expect(result.status.ok).toBe(true);
+    expect((await plan({ ...options, google: fakes.google, github: fakes.github })).changes).toEqual([]);
+  });
+
+  it('takes the home chain from options without GitHub access', async () => {
+    const fakes = createConfiguredFakes();
+    addStaging(fakes);
+    const home = { provider: fakes.names.provider, serviceAccount: fakes.names.serviceAccount };
+    vi.stubGlobal('fetch', async (url: string) => {
+      const repo = await fakes.github.request<unknown>('GET', new URL(url).pathname);
+      return new Response(JSON.stringify(repo), { status: 200 });
+    });
+
+    const result = applied(await setupWith(fakes, { projectId: STAGING.projectId, github: false, home }));
+    expect(result.status.context.homeProjectId).toBe('demo-project');
+    expect(result.manual).toEqual([]);
+    expect(result.status.ok).toBe(true);
+
+    // In the home project itself, `home` just names the chain to check.
+    const own = await run(fakes, { github: false, home });
+    expect(own.context.homeProjectId).toBe('demo-project');
+    expect(check(own, 'gcp.pool').status).toBe('pass');
+  });
+
+  it('starts an independent chain when names are passed', async () => {
+    const fakes = createConfiguredFakes();
+    addStaging(fakes);
+    const report = await run(fakes, { projectId: STAGING.projectId, names: { serviceAccount: 'deployer' } });
+    expect(report.context).toMatchObject({
+      homeProjectId: 'staging-project',
+      serviceAccount: 'deployer@staging-project.iam.gserviceaccount.com',
+      provider: 'projects/222222222222/locations/global/workloadIdentityPools/github/providers/github-987654321',
+    });
+  });
+
+  it('rejects an invalid home', async () => {
+    const fakes = createConfiguredFakes();
+    await expect(run(fakes, { home: { provider: 'github', serviceAccount: fakes.names.serviceAccount } })).rejects.toMatchObject({
+      code: 'INVALID_NAME',
+    });
+    await expect(run(fakes, { home: { provider: fakes.names.provider, serviceAccount: 'nope' } })).rejects.toMatchObject({
+      code: 'INVALID_NAME',
+    });
+  });
+
+  it("lets the deploy account act as the other project's functions runtime", async () => {
+    const fakes = createConfiguredFakes({ presets: ['functions'] });
+    addStaging(fakes);
+    const runtime = '222222222222-compute@developer.gserviceaccount.com';
+    fakes.google.state.serviceAccounts[runtime] = { projectId: STAGING.projectId, iamPolicy: {} };
+
+    const result = applied(await setupWith(fakes, { projectId: STAGING.projectId, presets: ['functions'] }));
+    expect(result.applied.map((c) => c.resource)).toEqual(['gcp.apis', 'gcp.project-roles', 'gcp.project-roles', 'gcp.runtime-sa-user']);
+    expect(fakes.google.state.serviceAccounts[runtime]!.iamPolicy!.bindings).toEqual([
+      { role: 'roles/iam.serviceAccountUser', members: [`serviceAccount:${fakes.names.serviceAccount}`] },
+    ]);
+    expect(result.status.ok).toBe(true);
   });
 });

@@ -149,3 +149,10 @@ export const readProjectPolicy = (rt: Runtime) =>
 
 export const poolId = (ctx: Context): string => ctx.pool.split('/').pop()!;
 export const providerId = (ctx: Context): string => ctx.provider.split('/').pop()!;
+
+/** The principal set for this repository in the pool, which may live in the home project. */
+export const repoPrincipal = (ctx: Context): string =>
+  `principalSet://iam.googleapis.com/${ctx.pool}/attribute.repository_id/${ctx.repoId}`;
+
+/** Deploy roles for another project, using the trust chain set up in the home project (5.8). */
+export const isCrossProject = (ctx: Context): boolean => ctx.homeProjectId !== ctx.projectId;

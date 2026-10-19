@@ -299,3 +299,87 @@ describe('firebase-wif setup', () => {
     }
   });
 });
+
+const aliasDir = async (projects: Record<string, string>) => {
+  const root = await repoDir();
+  await writeFile(join(root, '.firebaserc'), JSON.stringify({ projects }));
+  return root;
+};
+
+const withStaging = (fakes: ConfiguredFakes) => {
+  fakes.google.state.projects.push({
+    projectId: 'staging-project',
+    projectNumber: '222222222222',
+    enabledServices: [],
+    iamPolicy: { bindings: [] },
+  });
+  return fakes;
+};
+
+describe('--all-aliases', () => {
+  it('checks every alias against the shared trust chain', async () => {
+    const fakes = withStaging(createConfiguredFakes());
+    const cwd = await aliasDir({ staging: 'staging-project', default: 'demo-project' });
+    const { code, stdout } = await cli(['--all-aliases'], fakes, { cwd });
+    expect(code).toBe(1);
+    const [home, staging] = stdout.split('\nfirebase-wif status\n');
+    expect(home).toContain('project  demo-project (#123456789012, from .firebaserc alias default)');
+    expect(home).toContain('  0 failed, 0 warnings, 20 passed, 1 skipped');
+    expect(staging).toContain('project  staging-project (#222222222222, from .firebaserc alias staging)');
+    expect(staging).toContain('home     demo-project (shares its provider and service account)');
+    expect(staging).toContain('- gcp.pool                shared from demo-project');
+    expect(staging).toContain('\u2717 gcp.project-roles');
+  });
+
+  it('sets up the home project first, then grants roles in the others', async () => {
+    const fakes = withStaging(createConfiguredFakes());
+    emptyAll(fakes);
+    const cwd = await aliasDir({ default: 'demo-project', staging: 'staging-project' });
+
+    const dryRun = JSON.parse((await cli(['setup', '--all-aliases', '--dry-run', '--json'], fakes, { cwd })).stdout);
+    expect(dryRun.map((entry: { alias: string }) => entry.alias)).toEqual(['default', 'staging']);
+    expect(dryRun[1].context.homeProjectId).toBe('demo-project');
+    expect(dryRun[1].changes.map((c: { resource: string }) => c.resource)).toEqual(['gcp.apis', 'gcp.project-roles']);
+
+    const { code, stdout } = await cli(['setup', '--all-aliases', '--yes', '--json'], fakes, { cwd });
+    expect(code).toBe(0);
+    const results = JSON.parse(stdout);
+    expect(results.map((entry: { alias: string; status: { ok: boolean } }) => [entry.alias, entry.status.ok])).toEqual([
+      ['default', true],
+      ['staging', true],
+    ]);
+    expect(fakes.google.state.projects[1]!.iamPolicy.bindings).toEqual([
+      { role: 'roles/firebasehosting.admin', members: [`serviceAccount:${fakes.names.serviceAccount}`] },
+    ]);
+    expect((await cli(['--all-aliases'], fakes, { cwd })).code).toBe(0);
+  });
+
+  it('stops at the first project that fails to run', async () => {
+    const fakes = createConfiguredFakes();
+    const cwd = await aliasDir({ default: 'missing-project', staging: 'demo-project' });
+    const { code, stdout } = await cli(['--all-aliases', '--json'], fakes, { cwd });
+    expect(code).toBe(3);
+    expect(JSON.parse(stdout)).toEqual([{ alias: 'default', error: expect.objectContaining({ code: 'PROJECT_NOT_FOUND' }) }]);
+  });
+
+  it('needs aliases and no --project', async () => {
+    const fakes = createConfiguredFakes();
+    expect((await cli(['--all-aliases', '--project', 'demo-project'], fakes)).code).toBe(2);
+    const empty = await repoDir();
+    await writeFile(join(empty, '.firebaserc'), '{}');
+    const { code, stderr } = await cli(['--all-aliases'], fakes, { cwd: empty });
+    expect(code).toBe(2);
+    expect(stderr).toBe('--all-aliases needs project aliases in .firebaserc.\n');
+  });
+});
+
+function emptyAll(fakes: ConfiguredFakes) {
+  const project = fakes.google.state.projects[0]!;
+  project.enabledServices = [];
+  project.iamPolicy = { bindings: [] };
+  fakes.google.state.pools = {};
+  fakes.google.state.providers = {};
+  fakes.google.state.serviceAccounts = {};
+  fakes.github.state.repos['octo-org/site']!.variables = {};
+  fakes.github.state.repos['octo-org/site']!.environments = {};
+}

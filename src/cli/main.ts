@@ -1,13 +1,13 @@
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 import { defaultGitHubClient, defaultGoogleClient, type Exec } from '../core/clients.js';
-import { resolveContext } from '../core/context.js';
+import { projectAliases, resolveContext } from '../core/context.js';
 import { assertCanApply, plan, status } from '../core/engine.js';
 import { FirebaseWifError } from '../core/errors.js';
 import { DEFAULT_ENVIRONMENT, DEFAULT_VARIABLE_PREFIX } from '../core/naming.js';
-import type { ApplyResult, GitHubClient, GoogleClient, Options, Plan, PresetName } from '../core/types.js';
+import type { ApplyResult, Context, GitHubClient, GoogleClient, Options, Plan, PresetName } from '../core/types.js';
 import { PRESET_NAMES } from '../presets.js';
-import { renderPlan, renderStatus } from './render.js';
+import { renderPlan, renderStatus, type Sources } from './render.js';
 
 export const USAGE = `Usage: firebase-wif [status|setup] [options]
 
@@ -17,6 +17,7 @@ Commands:
 
 Options:
   --project <id|alias>          Firebase project ID or .firebaserc alias
+  --all-aliases                 Run once per .firebaserc project, sharing the default project's trust chain
   --repo <owner/name>           GitHub repository
   --pool <id>                   Workload identity pool ID (default: github)
   --provider <id>               Provider ID (default: github-<repoId>)
@@ -97,6 +98,7 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
       allowPositionals: true,
       options: {
         project: { type: 'string' },
+        'all-aliases': { type: 'boolean' },
         repo: { type: 'string' },
         pool: { type: 'string' },
         provider: { type: 'string' },
@@ -139,10 +141,19 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
     return EXIT.usage;
   }
 
+  // With --all-aliases, JSON output is one array with an entry per alias.
+  const all = Boolean(values['all-aliases']);
+  const collected: object[] = [];
+  let alias: string | undefined;
+  const emit = (payload: object) => {
+    if (all) collected.push({ alias, ...payload });
+    else stdout(`${JSON.stringify(payload, null, 2)}\n`);
+  };
+
   const fail = (error: unknown, code: number) => {
     if (!(error instanceof FirebaseWifError)) throw error;
     if (values.json) {
-      stdout(`${JSON.stringify({ error: { code: error.code, message: error.message, fix: error.fix } }, null, 2)}\n`);
+      emit({ error: { code: error.code, message: error.message, fix: error.fix } });
     } else {
       stderr(`${error.message}${error.fix ? `\n  fix: ${error.fix}` : ''}\n`);
     }
@@ -155,91 +166,144 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
     return EXIT.usage;
   }
   const presets = values.preset as PresetName[] | undefined;
+  const cwd = values.cwd ?? deps.cwd;
 
-  let resolved;
-  try {
-    resolved = await resolveContext({ cwd: values.cwd ?? deps.cwd, project: values.project, repo: values.repo, env, exec: deps.exec });
-  } catch (error) {
-    return fail(error, EXIT.usage);
-  }
+  const run = async (): Promise<number> => {
+    let targets: (string | undefined)[] = [values.project];
+    if (all) {
+      if (values.project) {
+        stderr('Pass either --project or --all-aliases, not both.\n');
+        return EXIT.usage;
+      }
+      let aliases;
+      try {
+        aliases = await projectAliases({ cwd });
+      } catch (error) {
+        return fail(error, EXIT.usage);
+      }
+      if (!aliases.length) {
+        stderr('--all-aliases needs project aliases in .firebaserc.\n');
+        return EXIT.usage;
+      }
+      targets = aliases.map((entry) => entry.alias);
+    }
 
-  let google: GoogleClient;
-  try {
-    google = await (deps.googleClient ?? (() => defaultGoogleClient({ env, exec: deps.exec })))();
-  } catch (error) {
-    return fail(error, EXIT.credentials);
-  }
+    let google: GoogleClient;
+    try {
+      google = await (deps.googleClient ?? (() => defaultGoogleClient({ env, exec: deps.exec })))();
+    } catch (error) {
+      return fail(error, EXIT.credentials);
+    }
 
-  let github: GitHubClient | false;
-  try {
-    github = await (deps.githubClient ?? (() => defaultGitHubClient({ env, exec: deps.exec })))();
-  } catch (error) {
-    if (!(error instanceof FirebaseWifError)) throw error;
-    stderr(`No GitHub credentials; skipping GitHub checks. Run gh auth login to include them.\n`);
-    github = false;
-  }
+    let github: GitHubClient | false;
+    try {
+      github = await (deps.githubClient ?? (() => defaultGitHubClient({ env, exec: deps.exec })))();
+    } catch (error) {
+      if (!(error instanceof FirebaseWifError)) throw error;
+      stderr(`No GitHub credentials; skipping GitHub checks. Run gh auth login to include them.\n`);
+      github = false;
+    }
 
-  const prefix = values['variable-prefix'] ?? DEFAULT_VARIABLE_PREFIX;
-  const options: Options = {
-    projectId: resolved.projectId,
-    repo: resolved.repo,
-    google,
-    github,
-    presets: presets?.length ? presets : 'auto',
-    firebaseJson: resolved.firebaseJson,
-    roles: values.role,
-    scheduler: values.scheduler,
-    runtimeServiceAccounts: values['runtime-service-account'],
-    names: { pool: values.pool, provider: values.provider, serviceAccount: values['service-account'] },
-    variables: { provider: `${prefix}PROVIDER`, serviceAccount: `${prefix}SERVICE_ACCOUNT` },
-    environment: values['no-environment']
-      ? false
-      : { name: values.environment ?? DEFAULT_ENVIRONMENT, branch: values.branch },
-    local: resolved.local,
-  };
-
-  if (command === 'setup') {
+    const prefix = values['variable-prefix'] ?? DEFAULT_VARIABLE_PREFIX;
     const interactive = (deps.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY)) && !values.json;
     const ask = deps.prompt ?? askOnTerminal;
-    return runSetup({
-      options: {
-        ...options,
-        prune: values.prune,
-        adopt: values.adopt
-          ? true
-          : interactive &&
-            ((candidate) =>
-              ask(`Adopt ${candidate.provider} and ${candidate.serviceAccount} from ${candidate.variables.provider} and ${candidate.variables.serviceAccount}?`)),
-        ...(values.json
-          ? {}
-          : {
-              onEvent: (event) => {
-                if (event.type === 'change:done') stdout(`  ✓ ${event.change.description}\n`);
-                if (event.type === 'retry') stdout(`    retrying in ${Math.round(event.delayMs / 1000)}s: ${event.reason}\n`);
+    // Later aliases reuse the first one's provider and service account (5.8).
+    let home: Options['home'];
+    let worst: number = EXIT.ok;
+
+    for (const [index, target] of targets.entries()) {
+      alias = target;
+      if (index > 0 && !values.json) stdout('\n');
+      let resolved;
+      try {
+        resolved = await resolveContext({ cwd, project: target, repo: values.repo, env, exec: deps.exec });
+      } catch (error) {
+        return fail(error, EXIT.usage);
+      }
+
+      const options: Options = {
+        projectId: resolved.projectId,
+        repo: resolved.repo,
+        google,
+        github,
+        presets: presets?.length ? presets : 'auto',
+        firebaseJson: resolved.firebaseJson,
+        roles: values.role,
+        scheduler: values.scheduler,
+        runtimeServiceAccounts: values['runtime-service-account'],
+        names: { pool: values.pool, provider: values.provider, serviceAccount: values['service-account'] },
+        variables: { provider: `${prefix}PROVIDER`, serviceAccount: `${prefix}SERVICE_ACCOUNT` },
+        environment: values['no-environment']
+          ? false
+          : { name: values.environment ?? DEFAULT_ENVIRONMENT, branch: values.branch },
+        local: resolved.local,
+        ...(home ? { home } : {}),
+      };
+
+      const outcome =
+        command === 'setup'
+          ? await runSetup({
+              options: {
+                ...options,
+                prune: values.prune,
+                adopt: values.adopt
+                  ? true
+                  : interactive &&
+                    ((candidate) =>
+                      ask(
+                        `Adopt ${candidate.provider} and ${candidate.serviceAccount} from ${candidate.variables.provider} and ${candidate.variables.serviceAccount}?`,
+                      )),
+                ...(values.json
+                  ? {}
+                  : {
+                      onEvent: (event) => {
+                        if (event.type === 'change:done') stdout(`  ✓ ${event.change.description}\n`);
+                        if (event.type === 'retry') stdout(`    retrying in ${Math.round(event.delayMs / 1000)}s: ${event.reason}\n`);
+                      },
+                    }),
               },
-            }),
-      },
-      flags: { dryRun: Boolean(values['dry-run']), yes: Boolean(values.yes), json: Boolean(values.json) },
-      interactive,
-      ask,
-      sources: resolved.sources,
-      stdout,
-      stderr,
-      fail,
-    });
-  }
+              flags: { dryRun: Boolean(values['dry-run']), yes: Boolean(values.yes), json: Boolean(values.json) },
+              interactive,
+              ask,
+              sources: resolved.sources,
+              stdout,
+              stderr,
+              emit,
+              fail,
+            })
+          : await runStatus(options, resolved.sources);
 
-  let report;
-  try {
-    // Status follows a legacy setup, so it reports what setup --adopt would do.
-    report = await status({ ...options, adopt: true });
-  } catch (error) {
-    return fail(error, exitFor(error));
-  }
+      worst = Math.max(worst, outcome.code);
+      // Without a home context to share, later aliases would plan a chain of their own.
+      if (!outcome.context) return worst;
+      home ??= { provider: outcome.context.provider, serviceAccount: outcome.context.serviceAccount };
+    }
+    return worst;
+  };
 
-  stdout(values.json ? `${JSON.stringify(report, null, 2)}\n` : renderStatus(report, resolved.sources));
-  return report.ok ? EXIT.ok : EXIT.failed;
+  const runStatus = async (options: Options, sources: Sources): Promise<Outcome> => {
+    let report;
+    try {
+      // Status follows a legacy setup, so it reports what setup --adopt would do.
+      report = await status({ ...options, adopt: true });
+    } catch (error) {
+      return { code: fail(error, exitFor(error)) };
+    }
+    if (values.json) emit(report);
+    else stdout(renderStatus(report, sources));
+    return { code: report.ok ? EXIT.ok : EXIT.failed, context: report.context };
+  };
+
+  const code = await run();
+  if (all && values.json) stdout(`${JSON.stringify(collected, null, 2)}\n`);
+  return code;
 };
+
+interface Outcome {
+  code: number;
+  /** Set when the project was checked or set up, so later aliases can share its trust chain. */
+  context?: Context;
+}
 
 const runSetup = async ({
   options,
@@ -249,46 +313,49 @@ const runSetup = async ({
   sources,
   stdout,
   stderr,
+  emit,
   fail,
 }: {
   options: Options;
   flags: { dryRun: boolean; yes: boolean; json: boolean };
   interactive: boolean;
   ask: (question: string) => Promise<boolean>;
-  sources: { projectId: string; repo: string };
+  sources: Sources;
   stdout: (text: string) => void;
   stderr: (text: string) => void;
+  emit: (payload: object) => void;
   fail: (error: unknown, code: number) => number;
-}): Promise<number> => {
+}): Promise<Outcome> => {
   let planned: Plan;
   try {
     planned = await plan(options);
   } catch (error) {
-    return fail(error, exitFor(error));
+    return { code: fail(error, exitFor(error)) };
   }
+  const { context } = planned;
 
   if (flags.json && flags.dryRun) {
-    const { context, changes, preflight } = planned;
-    stdout(`${JSON.stringify({ context, changes, preflight }, null, 2)}\n`);
-    return EXIT.ok;
+    const { changes, preflight } = planned;
+    emit({ context, changes, preflight });
+    return { code: EXIT.ok, context };
   }
   if (!flags.json) stdout(renderPlan(planned, sources));
-  if (flags.dryRun || (!planned.changes.length && !flags.json)) return EXIT.ok;
+  if (flags.dryRun || (!planned.changes.length && !flags.json)) return { code: EXIT.ok, context };
 
   if (planned.changes.some((change) => !change.manual)) {
     try {
       assertCanApply(planned.changes, planned.preflight);
     } catch (error) {
-      return fail(error, exitFor(error));
+      return { code: fail(error, exitFor(error)) };
     }
     if (!flags.yes) {
       if (!interactive) {
         stderr('Pass --yes to apply changes without a prompt.\n');
-        return EXIT.usage;
+        return { code: EXIT.usage };
       }
       if (!(await ask('Apply these changes?'))) {
         stdout('Cancelled; nothing changed.\n');
-        return EXIT.failed;
+        return { code: EXIT.failed };
       }
     }
   }
@@ -297,15 +364,15 @@ const runSetup = async ({
   try {
     result = await planned.apply();
   } catch (error) {
-    return fail(error, exitFor(error));
+    return { code: fail(error, exitFor(error)) };
   }
 
   if (flags.json) {
-    stdout(`${JSON.stringify(result, null, 2)}\n`);
+    emit(result);
   } else {
     stdout(`\n${renderStatus(result.status, sources)}`);
     if (result.manual.length) stdout(`Do by hand:\n${result.manual.map((change) => `  - ${change.description}\n`).join('')}`);
     if (result.applied.length) stdout(NEXT_STEPS);
   }
-  return result.status.ok ? EXIT.ok : EXIT.failed;
+  return { code: result.status.ok ? EXIT.ok : EXIT.failed, context: result.status.context };
 };

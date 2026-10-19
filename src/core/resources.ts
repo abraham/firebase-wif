@@ -6,7 +6,6 @@ import {
   MANAGED_MARKER,
   managedDescription,
   REQUIRED_MAPPING_KEYS,
-  repoPrincipalSet,
   serviceAccountProject,
 } from './naming.js';
 import { addMember, analyzeCondition, hasMember, removeMember, rolesOf, type Policy } from './policy.js';
@@ -22,6 +21,7 @@ import {
   readServiceAccount,
   readServiceAccountPolicy,
   readServices,
+  repoPrincipal,
   SERVICE_USAGE,
   type Read,
   type Runtime,
@@ -40,6 +40,8 @@ export type Outcome =
 export interface Resource {
   id: string;
   severity: 'fail' | 'warn';
+  /** `project` resources are reconciled in every project; `trust-chain` ones only in the home project. */
+  scope: 'project' | 'trust-chain';
   evaluate(rt: Runtime): Promise<Outcome>;
   /** Makes the non-manual changes `evaluate` reported, re-reading through the same fresh runtime. */
   apply(rt: Runtime, w: Writer): Promise<void>;
@@ -79,6 +81,7 @@ const prunable = async (rt: Runtime, policy: Read<Policy>): Promise<string[]> =>
 const apis: Resource = {
   id: 'gcp.apis',
   severity: 'fail',
+  scope: 'project',
   async evaluate(rt) {
     const services = await readServices(rt);
     if (services.kind !== 'found') return { kind: 'skipped', message: services.kind === 'skipped' ? services.reason : 'unknown' };
@@ -102,6 +105,7 @@ const apis: Resource = {
 const pool: Resource = {
   id: 'gcp.pool',
   severity: 'fail',
+  scope: 'trust-chain',
   async evaluate(rt) {
     const id = poolId(rt.ctx);
     const current = await readPool(rt);
@@ -137,6 +141,7 @@ const pool: Resource = {
 const provider: Resource = {
   id: 'gcp.provider',
   severity: 'fail',
+  scope: 'trust-chain',
   async evaluate(rt) {
     const id = providerId(rt.ctx);
     const parent = await readPool(rt);
@@ -218,6 +223,7 @@ const createProvider = async (rt: Runtime, id: string): Promise<Operation> => {
 const providerCondition: Resource = {
   id: 'gcp.provider-condition',
   severity: 'fail',
+  scope: 'trust-chain',
   async evaluate(rt) {
     const id = providerId(rt.ctx);
     const current = await readProvider(rt);
@@ -254,6 +260,7 @@ const providerCondition: Resource = {
 const serviceAccount: Resource = {
   id: 'gcp.service-account',
   severity: 'fail',
+  scope: 'trust-chain',
   async evaluate(rt) {
     const email = rt.ctx.serviceAccount;
     const current = await readServiceAccount(rt);
@@ -280,6 +287,7 @@ const serviceAccount: Resource = {
 const projectRoles: Resource = {
   id: 'gcp.project-roles',
   severity: 'fail',
+  scope: 'project',
   async evaluate(rt) {
     const { serviceAccount: email, roles, projectId } = rt.ctx;
     const policy = await readProjectPolicy(rt);
@@ -317,9 +325,10 @@ const projectRoles: Resource = {
 const workloadIdentityUser: Resource = {
   id: 'gcp.wi-user',
   severity: 'fail',
+  scope: 'trust-chain',
   async evaluate(rt) {
-    const { serviceAccount: email, projectNumber, repo, repoId } = rt.ctx;
-    const principal = repoPrincipalSet(projectNumber, poolId(rt.ctx), repoId);
+    const { serviceAccount: email, repo } = rt.ctx;
+    const principal = repoPrincipal(rt.ctx);
     const bind = [change(this.id, 'bind', `let ${repo} act as ${email} (${WORKLOAD_IDENTITY_USER})`)];
 
     const account = await readServiceAccount(rt);
@@ -334,11 +343,11 @@ const workloadIdentityUser: Resource = {
     return drift(bind);
   },
   async apply(rt, w) {
-    const { serviceAccount: email, projectNumber, repoId } = rt.ctx;
+    const { serviceAccount: email } = rt.ctx;
     await updatePolicy(w, rt.google, {
       resource: `${IAM}/projects/-/serviceAccounts/${email}`,
       label: `update the IAM policy of ${email}`,
-      change: grant(WORKLOAD_IDENTITY_USER, repoPrincipalSet(projectNumber, poolId(rt.ctx), repoId)),
+      change: grant(WORKLOAD_IDENTITY_USER, repoPrincipal(rt.ctx)),
     });
   },
 };
@@ -346,6 +355,7 @@ const workloadIdentityUser: Resource = {
 const runtimeServiceAccountUser: Resource = {
   id: 'gcp.runtime-sa-user',
   severity: 'fail',
+  scope: 'project',
   async evaluate(rt) {
     const { serviceAccount: email, runtimeServiceAccounts } = rt.ctx;
     if (!runtimeServiceAccounts.length) return { kind: 'skipped', message: 'no functions preset' };
@@ -392,6 +402,7 @@ const expectedVariables = (rt: Runtime): [name: string, value: string][] =>
 const variables: Resource = {
   id: 'gh.variables',
   severity: 'fail',
+  scope: 'trust-chain',
   async evaluate(rt) {
     const names = rt.ctx.variables;
     if (!names) return { kind: 'skipped', message: 'repo variables disabled' };
@@ -470,6 +481,7 @@ const readBranchPolicies = (rt: Runtime, name: string) =>
 const environment: Resource = {
   id: 'gh.environment',
   severity: 'warn',
+  scope: 'trust-chain',
   async evaluate(rt) {
     const env = rt.ctx.environment;
     if (!env) return { kind: 'skipped', message: 'environment disabled' };

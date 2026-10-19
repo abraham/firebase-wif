@@ -29,6 +29,9 @@ const header = (title: string, ctx: Context, sources: Sources) => [
   title,
   `  project  ${ctx.projectId} (#${ctx.projectNumber}, from ${sources.projectId})`,
   `  repo     ${ctx.repo} (id ${ctx.repoId}, from ${sources.repo})`,
+  ...(ctx.homeProjectId && ctx.homeProjectId !== ctx.projectId
+    ? [`  home     ${ctx.homeProjectId} (shares its provider and service account)`]
+    : []),
 ];
 
 export const renderPlan = (plan: Plan, sources: Sources): string => {

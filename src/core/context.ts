@@ -79,6 +79,44 @@ export const parseGitHubRemote = (url: string): string | undefined => {
   return `${owner}/${name}`;
 };
 
+/** Searches upward from `start` to the git root for `firebase.json`/`.firebaserc`. */
+const findFirebaseFiles = async (start: string) => {
+  const gitRoot = await findUp(start, undefined, (dir) => exists(join(dir, '.git')));
+  const firebaseDir = await findUp(
+    start,
+    gitRoot,
+    async (dir) => (await exists(join(dir, 'firebase.json'))) || (await exists(join(dir, '.firebaserc'))),
+  );
+  const firebaseJson = firebaseDir
+    ? await readJsonFile<Record<string, unknown>>(join(firebaseDir, 'firebase.json'))
+    : undefined;
+  const firebaserc = firebaseDir
+    ? await readJsonFile<LocalFiles['firebaserc']>(join(firebaseDir, '.firebaserc'))
+    : undefined;
+  return { gitRoot, firebaseDir, firebaseJson, firebaserc };
+};
+
+export interface ProjectAlias {
+  alias: string;
+  projectId: string;
+}
+
+/** Each project in `.firebaserc` once, under its first alias, with `default` first. */
+export const projectAliases = async ({ cwd = process.cwd() }: { cwd?: string } = {}): Promise<ProjectAlias[]> => {
+  const { firebaserc } = await findFirebaseFiles(resolve(cwd));
+  const projects = firebaserc?.projects ?? {};
+  const names = Object.keys(projects).sort((a, b) => Number(b === 'default') - Number(a === 'default'));
+  const seen = new Set<string>();
+  const aliases: ProjectAlias[] = [];
+  for (const alias of names) {
+    const projectId = projects[alias];
+    if (typeof projectId !== 'string' || seen.has(projectId)) continue;
+    seen.add(projectId);
+    aliases.push({ alias, projectId });
+  }
+  return aliases;
+};
+
 const readWorkflows = async (root: string): Promise<Record<string, string>> => {
   const dir = join(root, '.github', 'workflows');
   let entries: string[];
@@ -113,19 +151,7 @@ export const resolveContext = async ({
   exec?: Exec;
 } = {}): Promise<ResolvedContext> => {
   const start = resolve(cwd);
-  const gitRoot = await findUp(start, undefined, (dir) => exists(join(dir, '.git')));
-  const firebaseDir = await findUp(
-    start,
-    gitRoot,
-    async (dir) => (await exists(join(dir, 'firebase.json'))) || (await exists(join(dir, '.firebaserc'))),
-  );
-
-  const firebaseJson = firebaseDir
-    ? await readJsonFile<Record<string, unknown>>(join(firebaseDir, 'firebase.json'))
-    : undefined;
-  const firebaserc = firebaseDir
-    ? await readJsonFile<LocalFiles['firebaserc']>(join(firebaseDir, '.firebaserc'))
-    : undefined;
+  const { gitRoot, firebaseDir, firebaseJson, firebaserc } = await findFirebaseFiles(start);
   const aliases = firebaserc?.projects ?? {};
 
   let projectId: string | undefined;

@@ -22,7 +22,7 @@ import {
   validateVariableName,
 } from './naming.js';
 import { RESOURCES, type Outcome, type Resource } from './resources.js';
-import { createMemo, CRM, read, type Read, type RepoResource, type Runtime } from './runtime.js';
+import { createMemo, CRM, isCrossProject, read, type Read, type RepoResource, type Runtime } from './runtime.js';
 import type {
   AdoptCandidate,
   ApplyResult,
@@ -53,6 +53,16 @@ export const SETUP_PERMISSIONS: readonly string[] = [
   'resourcemanager.projects.setIamPolicy',
   'serviceusage.services.enable',
 ];
+
+/** What `setup` calls in a project that reuses another project's trust chain (5.8). */
+export const CROSS_PROJECT_PERMISSIONS: readonly string[] = [
+  'iam.serviceAccounts.setIamPolicy',
+  'resourcemanager.projects.setIamPolicy',
+  'serviceusage.services.enable',
+];
+
+// Only the home project exchanges tokens.
+const TOKEN_EXCHANGE_APIS = ['iamcredentials.googleapis.com', 'sts.googleapis.com'];
 
 const withSignal = <C extends GoogleClient | GitHubClient>(client: C, signal: AbortSignal | undefined): C =>
   signal
@@ -108,20 +118,44 @@ const readVariables = async (
   return values;
 };
 
-const runPreflight = async (google: GoogleClient, projectId: string, repo: RepoResource, github: boolean): Promise<Preflight> => {
+const runPreflight = async (google: GoogleClient, ctx: Context, repo: RepoResource, github: boolean): Promise<Preflight> => {
+  const needed = isCrossProject(ctx) ? CROSS_PROJECT_PERMISSIONS : SETUP_PERMISSIONS;
   let granted: string[] = [];
   try {
     ({ permissions: granted = [] } = await google.request<{ permissions?: string[] }>(
       'POST',
-      `${CRM}/projects/${projectId}:testIamPermissions`,
-      { permissions: SETUP_PERMISSIONS },
+      `${CRM}/projects/${ctx.projectId}:testIamPermissions`,
+      { permissions: needed },
     ));
   } catch (error) {
     rethrowAbort(error);
   }
   return {
-    missingPermissions: SETUP_PERMISSIONS.filter((permission) => !granted.includes(permission)),
+    missingPermissions: needed.filter((permission) => !granted.includes(permission)),
     githubAdmin: github ? Boolean(repo.permissions?.admin) : undefined,
+  };
+};
+
+/** The provider and SA to use: `home`, else the repo variables, else an adopted legacy setup. */
+const linkedChain = (
+  options: Options,
+  variables: Context['variables'],
+  values: Map<string, Read<string>>,
+  adopted: AdoptCandidate | undefined,
+): { provider?: string; serviceAccount?: string } => {
+  if (options.home) {
+    if (!parseProviderName(options.home.provider)) {
+      throw new FirebaseWifError('INVALID_NAME', `Invalid provider "${options.home.provider}": expected a full provider resource name.`);
+    }
+    return { provider: options.home.provider, serviceAccount: validateServiceAccountEmail(options.home.serviceAccount) };
+  }
+  const found = (name: string | undefined) => {
+    const value = name ? values.get(name) : undefined;
+    return value?.kind === 'found' ? value.value : undefined;
+  };
+  return {
+    provider: found(variables ? variables.provider : undefined) ?? adopted?.provider,
+    serviceAccount: found(variables ? variables.serviceAccount : undefined) ?? adopted?.serviceAccount,
   };
 };
 
@@ -134,23 +168,30 @@ const buildContext = (
   adopted: AdoptCandidate | undefined,
 ): Context => {
   const { projectId } = options;
-  const found = (name: string | undefined) => {
-    const value = name ? values.get(name) : undefined;
-    return value?.kind === 'found' ? value.value : undefined;
-  };
+  const linked = linkedChain(options, variables, values, adopted);
+  const fromVariable = parseProviderName(linked.provider ?? '');
+  const named = Object.values(options.names ?? {}).some(Boolean);
 
-  // Existing repo variables point at the resources to check, unless flags override them.
-  const fromVariable = parseProviderName(found(variables ? variables.provider : undefined) ?? adopted?.provider ?? '');
+  // A chain in another project is reused as is; explicit names start an independent chain instead.
+  const home =
+    !named && fromVariable && fromVariable.projectNumber !== projectNumber && linked.serviceAccount
+      ? { ...fromVariable, serviceAccount: linked.serviceAccount }
+      : undefined;
   const sameProject = fromVariable?.projectNumber === projectNumber ? fromVariable : undefined;
-  const variableAccount = found(variables ? variables.serviceAccount : undefined) ?? adopted?.serviceAccount;
 
-  const pool = validatePoolOrProvider('pool', options.names?.pool ?? sameProject?.pool ?? DEFAULT_POOL);
-  const provider = validatePoolOrProvider('provider', options.names?.provider ?? sameProject?.provider ?? defaultProviderId(repo.id));
-  const serviceAccount = options.names?.serviceAccount
-    ? serviceAccountEmail(options.names.serviceAccount, projectId)
-    : variableAccount && serviceAccountProject(variableAccount) === projectId
-      ? variableAccount
-      : serviceAccountEmail(defaultServiceAccountId(repo.id), projectId);
+  const pool = validatePoolOrProvider('pool', home?.pool ?? options.names?.pool ?? sameProject?.pool ?? DEFAULT_POOL);
+  const provider = validatePoolOrProvider(
+    'provider',
+    home?.provider ?? options.names?.provider ?? sameProject?.provider ?? defaultProviderId(repo.id),
+  );
+  const serviceAccount = home
+    ? home.serviceAccount
+    : options.names?.serviceAccount
+      ? serviceAccountEmail(options.names.serviceAccount, projectId)
+      : linked.serviceAccount && serviceAccountProject(linked.serviceAccount) === projectId
+        ? linked.serviceAccount
+        : serviceAccountEmail(defaultServiceAccountId(repo.id), projectId);
+  const chainProjectNumber = home?.projectNumber ?? projectNumber;
 
   const presets =
     options.presets === undefined || options.presets === 'auto'
@@ -171,10 +212,10 @@ const buildContext = (
     repoId: repo.id,
     ownerId: repo.owner.id,
     defaultBranch: repo.default_branch,
-    pool: poolName(projectNumber, pool),
-    provider: providerName(projectNumber, pool, provider),
+    pool: poolName(chainProjectNumber, pool),
+    provider: providerName(chainProjectNumber, pool, provider),
     serviceAccount,
-    homeProjectId: projectId,
+    homeProjectId: home ? (serviceAccountProject(home.serviceAccount) ?? home.projectNumber) : projectId,
     variables,
     environment:
       options.environment === false
@@ -185,7 +226,7 @@ const buildContext = (
           },
     presets,
     roles: rolesFor({ presets, roles: (options.roles ?? []).map(validateRole), scheduler: options.scheduler }),
-    apis: apisFor(presets),
+    apis: home ? apisFor(presets).filter((api) => !TOKEN_EXCHANGE_APIS.includes(api)) : apisFor(presets),
     runtimeServiceAccounts,
     ...(adopted ? { adopted } : {}),
   };
@@ -199,7 +240,7 @@ const considerAdoption = async (
   values: Map<string, Read<string>>,
   project: { projectId: string; projectNumber: string },
 ): Promise<AdoptCandidate | undefined> => {
-  if (!options.adopt || !github || !variables) return undefined;
+  if (!options.adopt || options.home || !github || !variables) return undefined;
   if ([variables.provider, variables.serviceAccount].some((name) => values.get(name)?.kind !== 'missing')) return undefined;
   const listed = await read(() =>
     github.request<{ variables?: { name: string; value: string }[] }>('GET', `/repos/${options.repo}/actions/variables?per_page=30`),
@@ -212,6 +253,12 @@ const considerAdoption = async (
 };
 
 type Entry = { resource: Resource } | { advisory: Advisory };
+
+/** In a project that reuses another project's chain, only project-scoped resources are reconciled. */
+const evaluate = (resource: Resource, rt: Runtime): Promise<Outcome> =>
+  resource.scope === 'trust-chain' && isCrossProject(rt.ctx)
+    ? Promise.resolve({ kind: 'skipped', message: `shared from ${rt.ctx.homeProjectId}; check it with --project ${rt.ctx.homeProjectId}` })
+    : resource.evaluate(rt);
 
 const entries = (ctx: Context): Entry[] => {
   const resource = (id: string): Entry => ({ resource: RESOURCES.find((r) => r.id === id)! });
@@ -287,7 +334,7 @@ const inspect = async (options: Options): Promise<Inspection> => {
   const values = await readVariables(github, options.repo, variables);
   const adopted = await considerAdoption(options, github, variables, values, { projectId: options.projectId, projectNumber });
   const ctx = buildContext(options, repo, projectNumber, variables, values, adopted);
-  const preflight = await runPreflight(google, options.projectId, repo, Boolean(github));
+  const preflight = await runPreflight(google, ctx, repo, Boolean(github));
 
   const rt: Runtime = {
     ctx,
@@ -311,7 +358,7 @@ const inspect = async (options: Options): Promise<Inspection> => {
   const checks = await Promise.all(
     entries(ctx).map(async (entry): Promise<Check> => {
       if ('advisory' in entry) return emit({ id: entry.advisory.id, ...(await entry.advisory.run(rt)) });
-      const outcome = await entry.resource.evaluate(rt);
+      const outcome = await evaluate(entry.resource, rt);
       if (outcome.kind === 'blocked') blocked.push(outcome.error);
       if (outcome.kind === 'drift' || outcome.kind === 'skipped') {
         changesByResource.set(entry.resource.id, outcome.kind === 'drift' ? outcome.changes : (outcome.changes ?? []));
@@ -382,7 +429,7 @@ const applyChanges = async (options: Options, inspection: Inspection, signal: Ab
         variableValues:
           resource.id === 'gh.variables' ? await readVariables(github, base.ctx.repo, base.ctx.variables) : base.variableValues,
       };
-      const outcome = await resource.evaluate(rt);
+      const outcome = await evaluate(resource, rt);
       if (outcome.kind === 'blocked') throw applyError(outcome.error, { resource: resource.id, action: 'update', description: outcome.message }, applied);
       const changes = outcome.kind === 'drift' ? outcome.changes : outcome.kind === 'skipped' ? (outcome.changes ?? []) : [];
       pending = changes.filter((c) => c.manual);

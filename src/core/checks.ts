@@ -1,13 +1,13 @@
-import { MANAGED_MARKER, repoPrincipalSet } from './naming.js';
+import { MANAGED_MARKER } from './naming.js';
 import { estimateSub, GOOGLE_SUBJECT_MAX_BYTES } from './oidc.js';
 import { rolesOf } from './policy.js';
 import {
-  poolId,
   read,
   readProjectPolicy,
   readServiceAccount,
   readServiceAccountKeys,
   readServiceAccountPolicy,
+  repoPrincipal,
   type Runtime,
 } from './runtime.js';
 import type { Check } from './types.js';
@@ -38,11 +38,14 @@ const projectMatch: Advisory = {
   id: 'local.project-match',
   async run(rt) {
     if (!rt.local) return skipped('no local files provided');
-    const fallback = rt.local.firebaserc?.projects?.default;
+    const projects = rt.local.firebaserc?.projects ?? {};
+    const fallback = projects.default;
     if (!fallback) return warn('.firebaserc has no default project', `firebase use --add ${rt.ctx.projectId}`);
-    return fallback === rt.ctx.projectId
-      ? pass(`default is ${fallback}`)
-      : warn(`.firebaserc default is ${fallback}, not ${rt.ctx.projectId}`);
+    if (fallback === rt.ctx.projectId) return pass(`default is ${fallback}`);
+    const alias = Object.keys(projects).find((name) => projects[name] === rt.ctx.projectId);
+    return alias
+      ? pass(`alias ${alias} is ${rt.ctx.projectId}`)
+      : warn(`.firebaserc default is ${fallback}, not ${rt.ctx.projectId}`, `firebase use --add ${rt.ctx.projectId}`);
   },
 };
 
@@ -125,7 +128,7 @@ const broadImpersonation: Advisory = {
     if (account.kind !== 'found') return skipped(account.kind === 'missing' ? "service account doesn't exist yet" : account.reason);
     const policy = await readServiceAccountPolicy(rt, rt.ctx.serviceAccount);
     if (policy.kind !== 'found') return skipped(policy.kind === 'missing' ? 'service account not found' : policy.reason);
-    const ours = repoPrincipalSet(rt.ctx.projectNumber, poolId(rt.ctx), rt.ctx.repoId);
+    const ours = repoPrincipal(rt.ctx);
     const broad = (policy.value.bindings ?? [])
       .filter((binding) => IMPERSONATION_ROLES.includes(binding.role))
       .flatMap((binding) => binding.members ?? [])

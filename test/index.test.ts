@@ -160,6 +160,7 @@ describe('exports', () => {
   it('exposes the public API', async () => {
     const api = await import('../src/index.js');
     expect(Object.keys(api).sort()).toEqual([
+      'CROSS_PROJECT_PERMISSIONS',
       'FirebaseWifError',
       'HttpError',
       'SETUP_PERMISSIONS',

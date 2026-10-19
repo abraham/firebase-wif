@@ -103,6 +103,12 @@ describe('renderPlan', () => {
     );
   });
 
+  it('names the home project when the trust chain is shared', () => {
+    const output = renderPlan(planOf([], { homeProjectId: 'home-project' }), sources);
+    expect(output).toContain('  home     home-project (shares its provider and service account)\n');
+    expect(renderPlan(planOf([], { homeProjectId: 'demo-project' }), sources)).not.toContain('home ');
+  });
+
   it('says when there is nothing to do and shows adoption', () => {
     const output = renderPlan(
       planOf([], { adopted: { provider: 'projects/1/p', serviceAccount: 'sa@x.iam.gserviceaccount.com', variables: { provider: 'P', serviceAccount: 'S' } } }),
