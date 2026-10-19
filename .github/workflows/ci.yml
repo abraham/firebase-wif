@@ -38,3 +38,20 @@ jobs:
       - run: npm run build:action
       - name: Check that dist/action matches a fresh build
         run: git diff --exit-code -- dist/action
+
+  success:
+    needs: [test, action-bundle]
+    # Run even when a dependency fails, since a skipped required check counts as passing.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check that every job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            if [ "$result" != "success" ]; then
+              echo "::error::A required job finished with: $result"
+              exit 1
+            fi
+          done
