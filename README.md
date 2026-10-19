@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: npm ci && npm run build
       - uses: abraham/firebase-wif@v0
         with:
