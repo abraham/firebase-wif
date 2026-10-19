@@ -27,7 +27,7 @@ Check it any time with `npx @abraham/firebase-wif status`. Then add the Action t
 
 The job needs `id-token: write`. Pull requests from forks can't get OIDC tokens, so guard those jobs with `if: github.event.pull_request.head.repo.full_name == github.repository`.
 
-### `npx firebase-tools` (recommended)
+### `npx firebase-tools`
 
 ```yaml
 permissions:
