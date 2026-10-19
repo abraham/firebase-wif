@@ -1,0 +1,47 @@
+name: Firebase WIF
+description: Turn the job's GitHub OIDC token into Google credentials for firebase-tools and the Firebase deploy actions, without keys.
+author: abraham
+branding:
+  icon: unlock
+  color: orange
+
+inputs:
+  workload_identity_provider:
+    description: Full provider resource name, usually the FIREBASE_WIF_PROVIDER repo variable.
+    required: true
+  service_account:
+    description: Service account email, usually the FIREBASE_WIF_SERVICE_ACCOUNT repo variable.
+    required: true
+  project_id:
+    description: Firebase project ID. Defaults to the .firebaserc default project in working_directory.
+    required: false
+  working_directory:
+    description: Where to look for .firebaserc.
+    required: false
+    default: .
+  audience:
+    description: OIDC token audience, for providers with custom allowedAudiences. Defaults to https://iam.googleapis.com/<provider>.
+    required: false
+  verify:
+    description: Do a test token exchange so problems fail here instead of during the deploy.
+    required: false
+    default: 'true'
+  export_environment:
+    description: Export GOOGLE_APPLICATION_CREDENTIALS and the project environment variables for later steps.
+    required: false
+    default: 'true'
+
+outputs:
+  credentials_file_path:
+    description: Path to the external_account credentials file in RUNNER_TEMP.
+  credentials_json:
+    description: The credentials file contents (masked), for actions that take a service account JSON string.
+  project_id:
+    description: The resolved project ID.
+  service_account:
+    description: The service account email.
+
+runs:
+  using: node24
+  main: dist/action/main.js
+  post: dist/action/post.js

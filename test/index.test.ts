@@ -18,6 +18,7 @@ describe('library contract', () => {
     await import('../src/index.js');
     await import('../src/presets.js');
     await import('../src/gh.js');
+    await import('../src/credentials.js');
     await import('../src/testing/index.js');
     expect(log).not.toHaveBeenCalled();
     expect(write).not.toHaveBeenCalled();
@@ -83,7 +84,8 @@ describe('library contract', () => {
 
   it('only reads the filesystem in context resolution', async () => {
     const dir = join(import.meta.dirname, '../src');
-    const files = (await readdir(dir, { recursive: true })).filter((file) => file.endsWith('.ts'));
+    // The Action isn't part of the library; it writes the credentials file by design.
+    const files = (await readdir(dir, { recursive: true })).filter((file) => file.endsWith('.ts') && !file.startsWith('action'));
     const readers = [];
     for (const file of files) {
       if (/from 'node:fs/.test(await readFile(join(dir, file), 'utf8'))) readers.push(file);

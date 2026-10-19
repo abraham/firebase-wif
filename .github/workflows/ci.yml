@@ -24,3 +24,16 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  action-bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:action
+      - name: Check that dist/action matches a fresh build
+        run: git diff --exit-code -- dist/action
