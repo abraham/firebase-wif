@@ -45,6 +45,8 @@ export interface Runtime {
   repo: RepoResource;
   preflight: Preflight;
   variableValues: Map<string, Read<string>>;
+  /** Remove unrequested project roles from a firebase-wif-managed service account. */
+  prune?: boolean;
   memo<T>(key: string, load: () => Promise<T>): Promise<T>;
 }
 

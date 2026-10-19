@@ -1,12 +1,18 @@
 import { FirebaseWifError } from './errors.js';
 import {
+  desiredAttributeCondition,
   desiredAttributeMapping,
   ISSUER,
+  MANAGED_MARKER,
+  managedDescription,
   REQUIRED_MAPPING_KEYS,
   repoPrincipalSet,
+  serviceAccountProject,
 } from './naming.js';
-import { analyzeCondition, hasMember } from './policy.js';
+import { addMember, analyzeCondition, hasMember, removeMember, rolesOf, type Policy } from './policy.js';
 import {
+  CRM,
+  IAM,
   poolId,
   providerId,
   read,
@@ -16,10 +22,13 @@ import {
   readServiceAccount,
   readServiceAccountPolicy,
   readServices,
+  SERVICE_USAGE,
+  type Read,
   type Runtime,
 } from './runtime.js';
 import { SERVICE_ACCOUNT_USER_ROLE } from '../presets.js';
 import type { Change, ChangeAction } from './types.js';
+import { updatePolicy, waitForOperation, type Operation, type Writer } from './writes.js';
 
 export type Outcome =
   | { kind: 'ok'; message: string }
@@ -32,16 +41,40 @@ export interface Resource {
   id: string;
   severity: 'fail' | 'warn';
   evaluate(rt: Runtime): Promise<Outcome>;
+  /** Makes the non-manual changes `evaluate` reported, re-reading through the same fresh runtime. */
+  apply(rt: Runtime, w: Writer): Promise<void>;
 }
 
 const change = (resource: string, action: ChangeAction, description: string, manual = false): Change =>
   manual ? { resource, action, description, manual } : { resource, action, description };
 
-const drift = (changes: Change[]): Outcome => ({
+const drift = (changes: Change[], fix?: string): Outcome => ({
   kind: 'drift',
   message: changes.map((c) => c.description).join('; '),
   changes,
+  ...(fix ? { fix } : {}),
 });
+
+const WORKLOAD_IDENTITY_USER = 'roles/iam.workloadIdentityUser';
+const ADMIN_FIX = 'Ask a repo admin to run firebase-wif setup, or make these changes by hand.';
+
+/** A policy change that grants `role` to `member`, or nothing when it's already granted. */
+const grant = (role: string, member: string) => (policy: Policy) => {
+  const next = addMember(policy, role, member);
+  return next === policy ? undefined : next;
+};
+
+const isManaged = async (rt: Runtime): Promise<boolean> => {
+  const account = await readServiceAccount(rt);
+  return account.kind === 'found' && Boolean(account.value.description?.includes(MANAGED_MARKER));
+};
+
+/** Roles `--prune` removes: unconditional, unrequested, and only from a managed service account. */
+const prunable = async (rt: Runtime, policy: Read<Policy>): Promise<string[]> => {
+  if (!rt.prune || policy.kind !== 'found') return [];
+  const extra = rolesOf(policy.value, `serviceAccount:${rt.ctx.serviceAccount}`).filter((role) => !rt.ctx.roles.includes(role));
+  return extra.length && (await isManaged(rt)) ? extra : [];
+};
 
 const apis: Resource = {
   id: 'gcp.apis',
@@ -52,6 +85,17 @@ const apis: Resource = {
     const disabled = [...services.value].filter(([, on]) => !on).map(([api]) => api);
     if (!disabled.length) return { kind: 'ok', message: `${services.value.size}/${services.value.size} enabled` };
     return drift([change(this.id, 'enable', `enable ${disabled.join(', ')}`)]);
+  },
+  async apply(rt, w) {
+    const services = await readServices(rt);
+    if (services.kind !== 'found') return;
+    const serviceIds = [...services.value].filter(([, on]) => !on).map(([api]) => api);
+    const operation = await rt.google.request<Operation>(
+      'POST',
+      `${SERVICE_USAGE}/projects/${rt.ctx.projectNumber}/services:batchEnable`,
+      { serviceIds },
+    );
+    await waitForOperation(w, rt.google, SERVICE_USAGE, operation, `enable ${serviceIds.join(', ')}`);
   },
 };
 
@@ -68,6 +112,25 @@ const pool: Resource = {
     }
     if (current.value.disabled) return drift([change(this.id, 'update', `re-enable workload identity pool ${id}`)]);
     return { kind: 'ok', message: `${id} is active` };
+  },
+  async apply(rt, w) {
+    const id = poolId(rt.ctx);
+    const current = await readPool(rt);
+    let operation: Operation;
+    if (current.kind === 'missing') {
+      operation = await rt.google.request<Operation>(
+        'POST',
+        `${IAM}/projects/${rt.ctx.projectNumber}/locations/global/workloadIdentityPools?workloadIdentityPoolId=${id}`,
+        { displayName: 'GitHub Actions', description: 'Created by firebase-wif' },
+      );
+    } else if (current.kind === 'found' && current.value.state === 'DELETED') {
+      operation = await rt.google.request<Operation>('POST', `${IAM}/${rt.ctx.pool}:undelete`, {});
+    } else if (current.kind === 'found' && current.value.disabled) {
+      operation = await rt.google.request<Operation>('PATCH', `${IAM}/${rt.ctx.pool}?updateMask=disabled`, { disabled: false });
+    } else {
+      return;
+    }
+    await waitForOperation(w, rt.google, IAM, operation, `set up workload identity pool ${id}`);
   },
 };
 
@@ -98,6 +161,58 @@ const provider: Resource = {
     if (missing.length) changes.push(change(this.id, 'update', `map ${missing.join(', ')} on provider ${id}`));
     return changes.length ? drift(changes) : { kind: 'ok', message: `${id} trusts ${ISSUER}` };
   },
+  async apply(rt, w) {
+    const id = providerId(rt.ctx);
+    const current = await readProvider(rt);
+    let operation: Operation;
+    if (current.kind === 'missing') {
+      operation = await createProvider(rt, id);
+    } else if (current.kind === 'found' && current.value.state === 'DELETED') {
+      operation = await rt.google.request<Operation>('POST', `${IAM}/${rt.ctx.provider}:undelete`, {});
+    } else if (current.kind === 'found') {
+      const mask: string[] = [];
+      const body: Record<string, unknown> = {};
+      if (current.value.disabled) {
+        mask.push('disabled');
+        body.disabled = false;
+      }
+      const desired = desiredAttributeMapping();
+      const mapping = { ...current.value.attributeMapping };
+      const missing = REQUIRED_MAPPING_KEYS.filter((key) => mapping[key] !== desired[key]);
+      if (missing.length) {
+        for (const key of missing) mapping[key] = desired[key]!;
+        mask.push('attributeMapping');
+        body.attributeMapping = mapping;
+      }
+      if (!mask.length) return;
+      operation = await rt.google.request<Operation>('PATCH', `${IAM}/${rt.ctx.provider}?updateMask=${mask.join(',')}`, body);
+    } else {
+      return;
+    }
+    await waitForOperation(w, rt.google, IAM, operation, `set up provider ${id}`);
+  },
+};
+
+const createProvider = async (rt: Runtime, id: string): Promise<Operation> => {
+  const { pool, repo, repoId, ownerId } = rt.ctx;
+  try {
+    return await rt.google.request<Operation>('POST', `${IAM}/${pool}/providers?workloadIdentityPoolProviderId=${id}`, {
+      displayName: `GitHub ${repo}`.slice(0, 32),
+      description: managedDescription(repo, repoId),
+      attributeMapping: desiredAttributeMapping(),
+      attributeCondition: desiredAttributeCondition(repoId, ownerId),
+      oidc: { issuerUri: ISSUER },
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('constraints/iam.workloadIdentityPoolProviders')) {
+      throw new FirebaseWifError(
+        'ORG_POLICY_BLOCKS_ISSUER',
+        "The organization policy constraints/iam.workloadIdentityPoolProviders doesn't allow GitHub Actions as an issuer.",
+        { fix: `Ask an organization policy admin to add ${ISSUER} to the constraint's allowed values.` },
+      );
+    }
+    throw error;
+  }
 };
 
 const providerCondition: Resource = {
@@ -128,6 +243,12 @@ const providerCondition: Resource = {
         return drift([change(this.id, 'update', `limit provider ${id} to ${repo} (condition doesn't pin a repository ID)`)]);
     }
   },
+  async apply(rt, w) {
+    const operation = await rt.google.request<Operation>('PATCH', `${IAM}/${rt.ctx.provider}?updateMask=attributeCondition`, {
+      attributeCondition: desiredAttributeCondition(rt.ctx.repoId, rt.ctx.ownerId),
+    });
+    await waitForOperation(w, rt.google, IAM, operation, `limit provider ${providerId(rt.ctx)} to ${rt.ctx.repo}`);
+  },
 };
 
 const serviceAccount: Resource = {
@@ -141,6 +262,19 @@ const serviceAccount: Resource = {
     if (current.value.disabled) return drift([change(this.id, 'enable', `enable service account ${email}`)]);
     return { kind: 'ok', message: `${email} exists` };
   },
+  async apply(rt, w) {
+    const { serviceAccount: email, repo, repoId, projectId } = rt.ctx;
+    const current = await readServiceAccount(rt);
+    if (current.kind === 'missing') {
+      await rt.google.request('POST', `${IAM}/projects/${serviceAccountProject(email) ?? projectId}/serviceAccounts`, {
+        accountId: email.split('@')[0],
+        serviceAccount: { displayName: `GitHub Actions: ${repo}`.slice(0, 100), description: managedDescription(repo, repoId) },
+      });
+      w.createdServiceAccount = true;
+    } else if (current.kind === 'found' && current.value.disabled) {
+      await rt.google.request('POST', `${IAM}/projects/-/serviceAccounts/${email}:enable`, {});
+    }
+  },
 };
 
 const projectRoles: Resource = {
@@ -152,8 +286,31 @@ const projectRoles: Resource = {
     if (policy.kind === 'skipped') return { kind: 'skipped', message: policy.reason };
     const member = `serviceAccount:${email}`;
     const missing = policy.kind === 'found' ? roles.filter((role) => !hasMember(policy.value, role, member)) : roles;
-    if (!missing.length) return { kind: 'ok', message: `${roles.length} role${roles.length === 1 ? '' : 's'} on ${projectId}` };
-    return drift(missing.map((role) => change(this.id, 'bind', `grant ${role} on ${projectId} to ${email}`)));
+    const extra = await prunable(rt, policy);
+    const changes = [
+      ...missing.map((role) => change(this.id, 'bind', `grant ${role} on ${projectId} to ${email}`)),
+      ...extra.map((role) => change(this.id, 'unbind', `remove ${role} on ${projectId} from ${email}`)),
+    ];
+    if (!changes.length) return { kind: 'ok', message: `${roles.length} role${roles.length === 1 ? '' : 's'} on ${projectId}` };
+    return drift(changes);
+  },
+  async apply(rt, w) {
+    const { serviceAccount: email, roles, projectId } = rt.ctx;
+    const member = `serviceAccount:${email}`;
+    const prune = rt.prune && (await isManaged(rt));
+    await updatePolicy(w, rt.google, {
+      resource: `${CRM}/projects/${projectId}`,
+      getBody: { options: { requestedPolicyVersion: 3 } },
+      label: `update the IAM policy of ${projectId}`,
+      change: (policy) => {
+        let next = policy;
+        for (const role of roles) next = addMember(next, role, member);
+        if (prune) {
+          for (const role of rolesOf(next, member)) if (!roles.includes(role)) next = removeMember(next, role, member);
+        }
+        return next === policy ? undefined : next;
+      },
+    });
   },
 };
 
@@ -163,7 +320,7 @@ const workloadIdentityUser: Resource = {
   async evaluate(rt) {
     const { serviceAccount: email, projectNumber, repo, repoId } = rt.ctx;
     const principal = repoPrincipalSet(projectNumber, poolId(rt.ctx), repoId);
-    const bind = [change(this.id, 'bind', `let ${repo} act as ${email} (roles/iam.workloadIdentityUser)`)];
+    const bind = [change(this.id, 'bind', `let ${repo} act as ${email} (${WORKLOAD_IDENTITY_USER})`)];
 
     const account = await readServiceAccount(rt);
     if (account.kind === 'skipped') return { kind: 'skipped', message: account.reason };
@@ -171,10 +328,18 @@ const workloadIdentityUser: Resource = {
 
     const policy = await readServiceAccountPolicy(rt, email);
     if (policy.kind === 'skipped') return { kind: 'skipped', message: policy.reason };
-    if (policy.kind === 'found' && hasMember(policy.value, 'roles/iam.workloadIdentityUser', principal)) {
+    if (policy.kind === 'found' && hasMember(policy.value, WORKLOAD_IDENTITY_USER, principal)) {
       return { kind: 'ok', message: `${repo} can act as ${email}` };
     }
     return drift(bind);
+  },
+  async apply(rt, w) {
+    const { serviceAccount: email, projectNumber, repoId } = rt.ctx;
+    await updatePolicy(w, rt.google, {
+      resource: `${IAM}/projects/-/serviceAccounts/${email}`,
+      label: `update the IAM policy of ${email}`,
+      change: grant(WORKLOAD_IDENTITY_USER, repoPrincipalSet(projectNumber, poolId(rt.ctx), repoId)),
+    });
   },
 };
 
@@ -202,7 +367,27 @@ const runtimeServiceAccountUser: Resource = {
     if (notes.length) return { kind: 'skipped', message: notes.join('; ') };
     return { kind: 'ok', message: `${email} can act as ${runtimeServiceAccounts.join(', ')}` };
   },
+  async apply(rt, w) {
+    const member = `serviceAccount:${rt.ctx.serviceAccount}`;
+    for (const runtime of rt.ctx.runtimeServiceAccounts) {
+      const policy = await readServiceAccountPolicy(rt, runtime);
+      if (policy.kind !== 'found' || hasMember(policy.value, SERVICE_ACCOUNT_USER_ROLE, member)) continue;
+      await updatePolicy(w, rt.google, {
+        resource: `${IAM}/projects/-/serviceAccounts/${runtime}`,
+        label: `update the IAM policy of ${runtime}`,
+        change: grant(SERVICE_ACCOUNT_USER_ROLE, member),
+      });
+    }
+  },
 };
+
+const expectedVariables = (rt: Runtime): [name: string, value: string][] =>
+  rt.ctx.variables
+    ? [
+        [rt.ctx.variables.provider, rt.ctx.provider],
+        [rt.ctx.variables.serviceAccount, rt.ctx.serviceAccount],
+      ]
+    : [];
 
 const variables: Resource = {
   id: 'gh.variables',
@@ -210,10 +395,7 @@ const variables: Resource = {
   async evaluate(rt) {
     const names = rt.ctx.variables;
     if (!names) return { kind: 'skipped', message: 'repo variables disabled' };
-    const expected: [string, string][] = [
-      [names.provider, rt.ctx.provider],
-      [names.serviceAccount, rt.ctx.serviceAccount],
-    ];
+    const expected = expectedVariables(rt);
     if (!rt.github) {
       return {
         kind: 'skipped',
@@ -221,21 +403,69 @@ const variables: Resource = {
         changes: expected.map(([name, value]) => change(this.id, 'set', `set repo variable ${name} to ${value}`, true)),
       };
     }
+    const manual = rt.preflight.githubAdmin === false;
     const changes: Change[] = [];
     for (const [name, value] of expected) {
       const current = rt.variableValues.get(name) ?? { kind: 'skipped', reason: 'not read' };
       if (current.kind === 'skipped') return { kind: 'skipped', message: current.reason };
       if (current.kind === 'missing' || current.value !== value) {
-        changes.push(change(this.id, 'set', `set repo variable ${name} to ${value}`));
+        changes.push(change(this.id, 'set', `set repo variable ${name} to ${value}`, manual));
       }
     }
-    return changes.length ? drift(changes) : { kind: 'ok', message: `${names.provider} and ${names.serviceAccount} match` };
+    if (!changes.length) return { kind: 'ok', message: `${names.provider} and ${names.serviceAccount} match` };
+    return drift(changes, manual ? ADMIN_FIX : undefined);
+  },
+  async apply(rt) {
+    const github = rt.github;
+    if (!github) return;
+    for (const [name, value] of expectedVariables(rt)) {
+      const current = rt.variableValues.get(name);
+      if (current?.kind === 'missing') {
+        await github.request('POST', `/repos/${rt.ctx.repo}/actions/variables`, { name, value });
+      } else if (current?.kind === 'found' && current.value !== value) {
+        await github.request('PATCH', `/repos/${rt.ctx.repo}/actions/variables/${name}`, { name, value });
+      }
+    }
   },
 };
 
 interface Environment {
   deployment_branch_policy?: { protected_branches?: boolean; custom_branch_policies?: boolean } | null;
+  protection_rules?: {
+    type?: string;
+    wait_timer?: number;
+    prevent_self_review?: boolean;
+    reviewers?: { type?: string; reviewer?: { id?: number } }[];
+  }[];
 }
+
+/** GitHub's environment PUT drops protection rules it isn't sent, so send the current ones back. */
+const currentProtection = (env: Environment): Record<string, unknown> => {
+  const fields: Record<string, unknown> = {};
+  for (const rule of env.protection_rules ?? []) {
+    if (rule.type === 'wait_timer' && rule.wait_timer !== undefined) fields.wait_timer = rule.wait_timer;
+    if (rule.type === 'required_reviewers') {
+      fields.prevent_self_review = rule.prevent_self_review ?? false;
+      fields.reviewers = (rule.reviewers ?? []).map((reviewer) => ({ type: reviewer.type, id: reviewer.reviewer?.id }));
+    }
+  }
+  return fields;
+};
+
+const needsBranchPolicy = (env: Environment) => {
+  const policy = env.deployment_branch_policy;
+  return !policy?.custom_branch_policies || Boolean(policy.protected_branches);
+};
+
+const environmentPath = (rt: Runtime, name: string) => `/repos/${rt.ctx.repo}/environments/${encodeURIComponent(name)}`;
+
+const readBranchPolicies = (rt: Runtime, name: string) =>
+  read(() =>
+    rt.github!.request<{ branch_policies?: { name?: string; type?: string }[] }>(
+      'GET',
+      `${environmentPath(rt, name)}/deployment-branch-policies`,
+    ),
+  );
 
 const environment: Resource = {
   id: 'gh.environment',
@@ -243,7 +473,6 @@ const environment: Resource = {
   async evaluate(rt) {
     const env = rt.ctx.environment;
     if (!env) return { kind: 'skipped', message: 'environment disabled' };
-    const base = `/repos/${rt.ctx.repo}/environments/${encodeURIComponent(env.name)}`;
     const createAll = (manual: boolean) => [
       change(this.id, 'create', `create environment ${env.name}`, manual),
       change(this.id, 'create', `allow only ${env.branch} to deploy to ${env.name}`, manual),
@@ -251,22 +480,41 @@ const environment: Resource = {
     if (!rt.github) return { kind: 'skipped', message: 'no GitHub credentials', changes: createAll(true) };
 
     const github = rt.github;
-    const current = await read(() => github.request<Environment>('GET', base));
+    const manual = rt.preflight.githubAdmin === false;
+    const current = await read(() => github.request<Environment>('GET', environmentPath(rt, env.name)));
     if (current.kind === 'skipped') return { kind: 'skipped', message: current.reason };
-    if (current.kind === 'missing') return drift(createAll(false));
+    if (current.kind === 'missing') return drift(createAll(manual), manual ? ADMIN_FIX : undefined);
 
     const changes: Change[] = [];
-    const policy = current.value.deployment_branch_policy;
-    if (!policy?.custom_branch_policies || policy.protected_branches) {
-      changes.push(change(this.id, 'update', `limit ${env.name} to selected branches`));
+    if (needsBranchPolicy(current.value)) {
+      changes.push(change(this.id, 'update', `limit ${env.name} to selected branches`, manual));
     }
-    const branches = await read(() =>
-      github.request<{ branch_policies?: { name?: string; type?: string }[] }>('GET', `${base}/deployment-branch-policies`),
-    );
+    const branches = await readBranchPolicies(rt, env.name);
     if (branches.kind === 'skipped') return { kind: 'skipped', message: branches.reason };
     const names = branches.kind === 'found' ? (branches.value.branch_policies ?? []).map((p) => p.name) : [];
-    if (!names.includes(env.branch)) changes.push(change(this.id, 'create', `allow ${env.branch} to deploy to ${env.name}`));
-    return changes.length ? drift(changes) : { kind: 'ok', message: `${env.name} only deploys from ${env.branch}` };
+    if (!names.includes(env.branch)) changes.push(change(this.id, 'create', `allow ${env.branch} to deploy to ${env.name}`, manual));
+    if (!changes.length) return { kind: 'ok', message: `${env.name} only deploys from ${env.branch}` };
+    return drift(changes, manual ? ADMIN_FIX : undefined);
+  },
+  async apply(rt) {
+    const env = rt.ctx.environment;
+    const github = rt.github;
+    if (!env || !github) return;
+    const path = environmentPath(rt, env.name);
+    const current = await read(() => github.request<Environment>('GET', path));
+    if (current.kind === 'skipped') return;
+    if (current.kind === 'missing' || needsBranchPolicy(current.value)) {
+      await github.request('PUT', path, {
+        ...(current.kind === 'found' ? currentProtection(current.value) : {}),
+        deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
+      });
+    }
+    const branches = await readBranchPolicies(rt, env.name);
+    if (branches.kind === 'skipped') return;
+    const names = branches.kind === 'found' ? (branches.value.branch_policies ?? []).map((p) => p.name) : [];
+    if (!names.includes(env.branch)) {
+      await github.request('POST', `${path}/deployment-branch-policies`, { name: env.branch, type: 'branch' });
+    }
   },
 };
 

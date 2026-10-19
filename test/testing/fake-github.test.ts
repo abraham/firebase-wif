@@ -28,6 +28,10 @@ describe('createFakeGitHub', () => {
 
   it('reads, creates, and updates variables', async () => {
     const github = fake();
+    expect(await github.request('GET', '/repos/o/r/actions/variables?per_page=30')).toEqual({
+      total_count: 1,
+      variables: [{ name: 'A', value: '1' }],
+    });
     expect(await github.request('GET', '/repos/o/r/actions/variables/A')).toEqual({ name: 'A', value: '1' });
     await expect(github.request('GET', '/repos/o/r/actions/variables/B')).rejects.toMatchObject({ status: 404 });
     await github.request('POST', '/repos/o/r/actions/variables', { name: 'B', value: '2' });
@@ -44,7 +48,11 @@ describe('createFakeGitHub', () => {
 
   it('reads and writes environments and branch policies', async () => {
     const github = fake();
-    expect(await github.request('GET', '/repos/o/r/environments/production')).toEqual({ name: 'production', deployment_branch_policy: null });
+    expect(await github.request('GET', '/repos/o/r/environments/production')).toEqual({
+      name: 'production',
+      deployment_branch_policy: null,
+      protection_rules: [],
+    });
     await github.request('PUT', '/repos/o/r/environments/production', {
       deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
     });
@@ -57,6 +65,23 @@ describe('createFakeGitHub', () => {
     expect(github.state.repos['o/r']!.environments!['staging env']).toEqual({ deployment_branch_policy: null, branchPolicies: [] });
     await expect(github.request('GET', '/repos/o/r/environments/missing')).rejects.toMatchObject({ status: 404 });
     await expect(github.request('GET', '/repos/o/r/environments/missing/deployment-branch-policies')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('reports protection rules and replaces the ones a PUT leaves out', async () => {
+    const github = fake();
+    Object.assign(github.state.repos['o/r']!.environments!.production!, {
+      waitTimer: 30,
+      reviewers: [{ type: 'Team', id: 9 }],
+      preventSelfReview: true,
+    });
+    expect(await github.request('GET', '/repos/o/r/environments/production')).toMatchObject({
+      protection_rules: [
+        { type: 'wait_timer', wait_timer: 30 },
+        { type: 'required_reviewers', prevent_self_review: true, reviewers: [{ type: 'Team', reviewer: { id: 9 } }] },
+      ],
+    });
+    await github.request('PUT', '/repos/o/r/environments/production', { wait_timer: 5 });
+    expect(github.state.repos['o/r']!.environments!.production).toEqual({ deployment_branch_policy: null, branchPolicies: [], waitTimer: 5 });
   });
 
   it('answers 403 for forbidden paths and records calls', async () => {

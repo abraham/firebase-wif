@@ -1,4 +1,4 @@
-export { status, plan, SETUP_PERMISSIONS } from './core/engine.js';
+export { status, plan, setup, SETUP_PERMISSIONS } from './core/engine.js';
 export { resolveContext, parseGitHubRemote } from './core/context.js';
 export type { ResolvedContext } from './core/context.js';
 export {
@@ -27,5 +27,7 @@ export type {
   Preflight,
   PresetName,
   ProgressEvent,
+  SetupOptions,
+  SetupResult,
   StatusReport,
 } from './core/types.js';

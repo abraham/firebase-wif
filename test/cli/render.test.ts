@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { renderStatus } from '../../src/cli/render.js';
-import type { Check, StatusReport } from '../../src/core/types.js';
+import { renderPlan, renderStatus } from '../../src/cli/render.js';
+import type { Change, Check, Plan, StatusReport } from '../../src/core/types.js';
 
 const report = (checks: Check[]): StatusReport =>
   ({
@@ -61,5 +61,55 @@ describe('renderStatus', () => {
     expect(output).not.toContain('Local');
     expect(output).not.toContain('GitHub');
     expect(output).toContain('  0 failed, 2 warnings, 1 passed\n');
+  });
+});
+
+const planOf = (changes: Change[], context: Partial<Plan['context']> = {}): Plan =>
+  ({
+    context: { projectId: 'demo-project', projectNumber: '123', repo: 'o/r', repoId: 42, ...context },
+    changes,
+    preflight: { missingPermissions: [], githubAdmin: true },
+    apply: async () => {
+      throw new Error('not used');
+    },
+  }) as Plan;
+
+describe('renderPlan', () => {
+  it('lists automatic changes with a sign per action, then manual steps', () => {
+    const output = renderPlan(
+      planOf([
+        { resource: 'gcp.pool', action: 'create', description: 'create pool' },
+        { resource: 'gcp.provider', action: 'update', description: 'patch provider' },
+        { resource: 'gcp.project-roles', action: 'unbind', description: 'remove roles/editor' },
+        { resource: 'gh.variables', action: 'set', description: 'set A', manual: true },
+      ]),
+      sources,
+    );
+    expect(output).toBe(
+      [
+        'firebase-wif setup',
+        '  project  demo-project (#123, from --project)',
+        '  repo     o/r (id 42, from --repo)',
+        '',
+        '  Changes',
+        '    + create pool',
+        '    ~ patch provider',
+        '    - remove roles/editor',
+        '',
+        '  Do by hand',
+        '    - set A',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('says when there is nothing to do and shows adoption', () => {
+    const output = renderPlan(
+      planOf([], { adopted: { provider: 'projects/1/p', serviceAccount: 'sa@x.iam.gserviceaccount.com', variables: { provider: 'P', serviceAccount: 'S' } } }),
+      sources,
+    );
+    expect(output).toContain('  adopt    projects/1/p\n           sa@x.iam.gserviceaccount.com (from P and S)\n');
+    expect(output.endsWith('\n  Already set up.\n')).toBe(true);
+    expect(output).not.toContain('Changes');
   });
 });

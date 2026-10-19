@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HttpError, status } from '../src/index.js';
+import { HttpError, setup, status } from '../src/index.js';
 import type { ProgressEvent } from '../src/index.js';
 import { createConfiguredFakes } from '../src/testing/index.js';
 
@@ -17,6 +17,7 @@ describe('library contract', () => {
     vi.resetModules();
     await import('../src/index.js');
     await import('../src/presets.js');
+    await import('../src/gh.js');
     await import('../src/testing/index.js');
     expect(log).not.toHaveBeenCalled();
     expect(write).not.toHaveBeenCalled();
@@ -45,6 +46,37 @@ describe('library contract', () => {
     } finally {
       process.env = env;
     }
+    for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+    expect(reads).toEqual([]);
+  });
+
+  it('never prints, exits, or reads the environment during setup', async () => {
+    const fakes = createConfiguredFakes();
+    delete fakes.google.state.pools[fakes.names.pool];
+    fakes.github.state.repos['octo-org/site']!.variables = {};
+    const spies = [
+      vi.spyOn(console, 'log'),
+      vi.spyOn(console, 'warn'),
+      vi.spyOn(console, 'error'),
+      vi.spyOn(process.stdout, 'write'),
+      vi.spyOn(process.stderr, 'write'),
+      vi.spyOn(process, 'exit').mockImplementation(() => undefined as never),
+    ];
+    const env = process.env;
+    const reads: string[] = [];
+    process.env = new Proxy(env, {
+      get(target, key) {
+        if (typeof key === 'string') reads.push(key);
+        return Reflect.get(target, key);
+      },
+    });
+    let result;
+    try {
+      result = await setup({ ...fakes.options, google: fakes.google, github: fakes.github, sleep: async () => {} });
+    } finally {
+      process.env = env;
+    }
+    expect('applied' in result && result.applied).toHaveLength(3);
     for (const spy of spies) expect(spy).not.toHaveBeenCalled();
     expect(reads).toEqual([]);
   });
@@ -138,6 +170,7 @@ describe('exports', () => {
       'parseGitHubRemote',
       'plan',
       'resolveContext',
+      'setup',
       'status',
     ]);
   });

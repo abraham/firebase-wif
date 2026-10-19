@@ -8,7 +8,7 @@ export type ErrorCode =
   | 'PROVIDER_OWNED_BY_OTHER_REPO'
   | 'ORG_POLICY_BLOCKS_ISSUER'
   | 'OPERATION_TIMEOUT'
-  | 'NOT_IMPLEMENTED';
+  | 'APPLY_FAILED';
 
 export class FirebaseWifError extends Error {
   readonly code: ErrorCode;

@@ -1,6 +1,42 @@
 import { describe, expect, it } from 'vitest';
 import { desiredAttributeCondition } from '../../src/core/naming.js';
-import { analyzeCondition, hasMember, rolesOf } from '../../src/core/policy.js';
+import { addMember, analyzeCondition, hasMember, removeMember, rolesOf, type Policy } from '../../src/core/policy.js';
+
+describe('addMember and removeMember', () => {
+  const conditional = { role: 'roles/viewer', members: ['user:a@example.com'], condition: { expression: 'false' } };
+  const policy: Policy = {
+    version: 3,
+    etag: 'BwX1',
+    bindings: [conditional, { role: 'roles/editor', members: ['user:b@example.com'] }],
+  };
+
+  it('adds to the unconditional binding, keeping everything else', () => {
+    expect(addMember(policy, 'roles/viewer', 'user:a@example.com')).toEqual({
+      ...policy,
+      bindings: [conditional, policy.bindings![1], { role: 'roles/viewer', members: ['user:a@example.com'] }],
+    });
+    expect(addMember(policy, 'roles/editor', 'user:c@example.com').bindings![1]).toEqual({
+      role: 'roles/editor',
+      members: ['user:b@example.com', 'user:c@example.com'],
+    });
+    expect(addMember({}, 'roles/editor', 'user:c@example.com')).toEqual({ bindings: [{ role: 'roles/editor', members: ['user:c@example.com'] }] });
+  });
+
+  it('returns the same policy when the member is already there', () => {
+    expect(addMember(policy, 'roles/editor', 'user:b@example.com')).toBe(policy);
+  });
+
+  it('removes only from unconditional bindings and drops empty ones', () => {
+    expect(removeMember(policy, 'roles/viewer', 'user:a@example.com')).toEqual(policy);
+    expect(removeMember(policy, 'roles/editor', 'user:b@example.com')).toEqual({ ...policy, bindings: [conditional] });
+    const shared = addMember(policy, 'roles/editor', 'user:c@example.com');
+    expect(removeMember(shared, 'roles/editor', 'user:b@example.com').bindings![1]).toEqual({
+      role: 'roles/editor',
+      members: ['user:c@example.com'],
+    });
+    expect(removeMember({}, 'roles/editor', 'user:b@example.com')).toEqual({ bindings: [] });
+  });
+});
 
 describe('hasMember and rolesOf', () => {
   const policy = {

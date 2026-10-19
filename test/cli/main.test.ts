@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { main, type CliDeps } from '../../src/cli/main.js';
 import { FirebaseWifError } from '../../src/index.js';
 import { createConfiguredFakes, type ConfiguredFakes } from '../../src/testing/index.js';
@@ -23,6 +23,7 @@ const cli = async (argv: string[], fakes: ConfiguredFakes, deps: Partial<CliDeps
     exec: async () => 'https://github.com/octo-org/site.git',
     googleClient: async () => fakes.google,
     githubClient: async () => fakes.github,
+    interactive: false,
     stdout: (text) => (stdout += text),
     stderr: (text) => (stderr += text),
     ...deps,
@@ -104,7 +105,7 @@ describe('firebase-wif status', () => {
     const fakes = createConfiguredFakes();
     expect((await cli(['--nope'], fakes)).code).toBe(2);
     expect((await cli(['deploy'], fakes)).code).toBe(2);
-    expect((await cli(['setup'], fakes)).code).toBe(2);
+    expect((await cli(['status', '--yes'], fakes)).code).toBe(2);
     expect((await cli(['--preset', 'database'], fakes)).code).toBe(2);
     expect((await cli(['--role', 'owner'], fakes)).code).toBe(2);
     expect((await cli(['--help'], fakes)).code).toBe(0);
@@ -124,5 +125,177 @@ describe('firebase-wif status', () => {
     const { code, stdout } = await cli(['--json', '--project', 'missing-project'], createConfiguredFakes());
     expect(code).toBe(3);
     expect(JSON.parse(stdout).error.code).toBe('PROJECT_NOT_FOUND');
+  });
+});
+
+const brokenFakes = () => {
+  const fakes = createConfiguredFakes();
+  delete fakes.google.state.pools[fakes.names.pool];
+  fakes.github.state.repos['octo-org/site']!.variables = {};
+  return fakes;
+};
+
+const writes = (fakes: ConfiguredFakes) =>
+  [...fakes.google.calls, ...fakes.github.calls].filter((c) => c.method !== 'GET' && !/:(getIamPolicy|testIamPermissions)$/.test(c.url));
+
+describe('firebase-wif setup', () => {
+  it('prints the plan with --dry-run and changes nothing', async () => {
+    const fakes = brokenFakes();
+    const { code, stdout } = await cli(['setup', '--dry-run'], fakes);
+    expect(code).toBe(0);
+    expect(stdout).toMatchInlineSnapshot(`
+      "firebase-wif setup
+        project  demo-project (#123456789012, from .firebaserc default)
+        repo     octo-org/site (id 987654321, from git remote origin)
+
+        Changes
+          + create workload identity pool github
+          + create provider github-987654321
+          ~ set repo variable FIREBASE_WIF_PROVIDER to projects/123456789012/locations/global/workloadIdentityPools/github/providers/github-987654321
+          ~ set repo variable FIREBASE_WIF_SERVICE_ACCOUNT to github-987654321@demo-project.iam.gserviceaccount.com
+      "
+    `);
+    expect(writes(fakes)).toEqual([]);
+  });
+
+  it('applies with --yes and prints the final status', async () => {
+    const fakes = brokenFakes();
+    const { code, stdout } = await cli(['setup', '--yes'], fakes);
+    expect(code).toBe(0);
+    expect(stdout).toContain('  ✓ create workload identity pool github\n');
+    expect(stdout).toContain('  ✓ set repo variable FIREBASE_WIF_SERVICE_ACCOUNT');
+    expect(stdout).toContain('firebase-wif status');
+    expect(stdout).toContain('  0 failed, 0 warnings, 20 passed, 1 skipped');
+    expect(stdout).toContain('IAM changes can take a few minutes');
+    expect((await cli(['status'], fakes)).code).toBe(0);
+  });
+
+  it('says when everything is already set up', async () => {
+    const { code, stdout } = await cli(['setup'], createConfiguredFakes());
+    expect(code).toBe(0);
+    expect(stdout).toContain('  Already set up.\n');
+    expect(stdout).not.toContain('firebase-wif status');
+  });
+
+  it('needs --yes when it cannot ask', async () => {
+    const fakes = brokenFakes();
+    const { code, stderr } = await cli(['setup'], fakes);
+    expect(code).toBe(2);
+    expect(stderr).toBe('Pass --yes to apply changes without a prompt.\n');
+    expect(writes(fakes)).toEqual([]);
+  });
+
+  it('asks before applying', async () => {
+    const questions: string[] = [];
+    const declined = await cli(['setup'], brokenFakes(), {
+      interactive: true,
+      prompt: async (question) => (questions.push(question), false),
+    });
+    expect(declined.code).toBe(1);
+    expect(declined.stdout).toContain('Cancelled; nothing changed.');
+    expect(questions).toEqual(['Apply these changes?']);
+
+    const accepted = await cli(['setup'], brokenFakes(), { interactive: true, prompt: async () => true });
+    expect(accepted.code).toBe(0);
+  });
+
+  it('asks before adopting a legacy setup unless --adopt is passed', async () => {
+    const legacy = () => {
+      const fakes = createConfiguredFakes();
+      fakes.github.state.repos['octo-org/site']!.variables = {
+        GCP_WIF_PROVIDER: fakes.names.provider,
+        GCP_DEPLOY_SA: fakes.names.serviceAccount,
+      };
+      return fakes;
+    };
+    const questions: string[] = [];
+    const asked = await cli(['setup', '--dry-run'], legacy(), {
+      interactive: true,
+      prompt: async (question) => (questions.push(question), true),
+    });
+    expect(questions).toEqual([
+      'Adopt projects/123456789012/locations/global/workloadIdentityPools/github/providers/github-987654321 and github-987654321@demo-project.iam.gserviceaccount.com from GCP_WIF_PROVIDER and GCP_DEPLOY_SA?',
+    ]);
+    expect(asked.stdout).toContain('  adopt    projects/123456789012');
+    expect(asked.stdout).toContain('(from GCP_WIF_PROVIDER and GCP_DEPLOY_SA)');
+
+    const fakes = legacy();
+    const { code, stdout } = await cli(['setup', '--adopt', '--yes', '--json'], fakes);
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    expect(result.applied.map((c: { resource: string }) => c.resource)).toEqual(['gh.variables', 'gh.variables']);
+    expect(result.status.ok).toBe(true);
+    expect(fakes.github.state.repos['octo-org/site']!.variables).toMatchObject({ GCP_WIF_PROVIDER: fakes.names.provider });
+
+    // status follows the legacy variables, so it only reports the missing new ones.
+    const report = JSON.parse((await cli(['status', '--json'], legacy())).stdout);
+    expect(report.changes.map((c: { resource: string }) => c.resource)).toEqual(['gh.variables', 'gh.variables']);
+  });
+
+  it('prints the plan as JSON with --dry-run --json', async () => {
+    const { code, stdout } = await cli(['setup', '--dry-run', '--json', '--prune', '--scheduler', '--preset', 'functions'], brokenFakes());
+    expect(code).toBe(0);
+    const planned = JSON.parse(stdout);
+    expect(Object.keys(planned)).toEqual(['context', 'changes', 'preflight']);
+    expect(planned.context.roles).toContain('roles/cloudscheduler.admin');
+  });
+
+  it('passes runtime service accounts through', async () => {
+    const fakes = createConfiguredFakes();
+    const { stdout } = await cli(
+      ['setup', '--dry-run', '--json', '--preset', 'functions', '--runtime-service-account', 'runner@demo-project.iam.gserviceaccount.com'],
+      fakes,
+    );
+    expect(JSON.parse(stdout).context.runtimeServiceAccounts).toEqual(['runner@demo-project.iam.gserviceaccount.com']);
+  });
+
+  it('exits 3 without the permissions setup needs', async () => {
+    const fakes = brokenFakes();
+    fakes.google.state.projects[0]!.grantedPermissions = [];
+    const { code, stderr } = await cli(['setup', '--yes'], fakes);
+    expect(code).toBe(3);
+    expect(stderr).toContain("You're missing permissions that setup needs");
+    expect(stderr).toContain('fix: Ask a project owner to run firebase-wif setup.');
+    expect(writes(fakes)).toEqual([]);
+  });
+
+  it("exits 1 when a provider belongs to another repository", async () => {
+    const fakes = createConfiguredFakes();
+    fakes.google.state.providers[fakes.names.provider]!.attributeCondition = "assertion.repository_id == '1'";
+    const { code, stderr } = await cli(['setup', '--yes'], fakes);
+    expect(code).toBe(1);
+    expect(stderr).toContain('fix: Pass --provider');
+  });
+
+  it('exits 1 and says what was applied when a step fails', async () => {
+    const fakes = brokenFakes();
+    delete fakes.google.state.providers[fakes.names.provider];
+    fakes.google.state.failures = [{ url: '/providers?', status: 500, message: 'backend error' }];
+    const { code, stderr } = await cli(['setup', '--yes'], fakes);
+    expect(code).toBe(1);
+    expect(stderr).toContain("Couldn't create provider github-987654321 (500): backend error. Already applied: create workload identity pool github.");
+  });
+
+  it('lists manual steps without GitHub credentials', async () => {
+    const fakes = brokenFakes();
+    vi.stubGlobal('fetch', async (url: string) => {
+      const repo = await fakes.github.request<unknown>('GET', new URL(url).pathname);
+      return new Response(JSON.stringify(repo), { status: 200 });
+    });
+    try {
+      const { code, stdout, stderr } = await cli(['setup', '--yes'], fakes, {
+        githubClient: async () => {
+          throw new FirebaseWifError('NO_GITHUB_CREDENTIALS', 'No GitHub credentials found.');
+        },
+      });
+      expect(stderr).toContain('No GitHub credentials');
+      expect(stdout).toContain('  Do by hand\n    - set repo variable FIREBASE_WIF_PROVIDER');
+      expect(stdout).toContain('Do by hand:\n  - set repo variable FIREBASE_WIF_PROVIDER');
+      // Without credentials the variables can't be checked, so they're skipped rather than failed.
+      expect(stdout).toContain('- gh.variables');
+      expect(code).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

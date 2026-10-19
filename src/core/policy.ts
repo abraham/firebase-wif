@@ -23,6 +23,26 @@ export const rolesOf = (policy: Policy, member: string): string[] =>
     ),
   ].sort();
 
+/** Adds `member` to the unconditional `role` binding; keeps `version`, `etag`, and every other binding. */
+export const addMember = (policy: Policy, role: string, member: string): Policy => {
+  if (hasMember(policy, role, member)) return policy;
+  const bindings = [...(policy.bindings ?? [])];
+  const index = bindings.findIndex((binding) => binding.role === role && !binding.condition);
+  if (index < 0) bindings.push({ role, members: [member] });
+  else bindings[index] = { ...bindings[index]!, members: [...(bindings[index]!.members ?? []), member] };
+  return { ...policy, bindings };
+};
+
+/** Removes `member` from unconditional `role` bindings only, dropping bindings left empty. */
+export const removeMember = (policy: Policy, role: string, member: string): Policy => ({
+  ...policy,
+  bindings: (policy.bindings ?? []).flatMap((binding) => {
+    if (binding.role !== role || binding.condition || !binding.members?.includes(member)) return [binding];
+    const members = binding.members.filter((m) => m !== member);
+    return members.length ? [{ ...binding, members }] : [];
+  }),
+});
+
 export type ConditionAnalysis =
   | { kind: 'missing' }
   | { kind: 'pinned' }

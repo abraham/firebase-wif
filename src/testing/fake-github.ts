@@ -5,6 +5,9 @@ import type { RecordedCall } from './fake-google.js';
 export interface FakeEnvironment {
   deployment_branch_policy: { protected_branches: boolean; custom_branch_policies: boolean } | null;
   branchPolicies: string[];
+  waitTimer?: number;
+  reviewers?: { type: 'User' | 'Team'; id: number }[];
+  preventSelfReview?: boolean;
 }
 
 export interface FakeRepo {
@@ -48,6 +51,10 @@ export const createFakeGitHub = (seed: Partial<FakeGitHubState> = {}): FakeGitHu
       return { id: repo.id, owner: repo.owner, default_branch: repo.default_branch, permissions: repo.permissions ?? { admin: true } };
     }
 
+    if (rest === '/actions/variables' && method === 'GET') {
+      const list = Object.entries(variables).map(([name, value]) => ({ name, value }));
+      return { total_count: list.length, variables: list };
+    }
     if (rest === '/actions/variables' && method === 'POST') {
       const { name, value } = body as { name: string; value: string };
       if (name in variables) throw new HttpError(409, 'already exists');
@@ -91,10 +98,34 @@ export const createFakeGitHub = (seed: Partial<FakeGitHubState> = {}): FakeGitHu
         }
       } else if (method === 'GET') {
         if (!current) throw notFound(`environment ${name}`);
-        return { name, deployment_branch_policy: current.deployment_branch_policy };
+        const rules: unknown[] = [];
+        if (current.waitTimer !== undefined) rules.push({ type: 'wait_timer', wait_timer: current.waitTimer });
+        if (current.reviewers?.length) {
+          rules.push({
+            type: 'required_reviewers',
+            prevent_self_review: current.preventSelfReview ?? false,
+            reviewers: current.reviewers.map(({ type, id }) => ({ type, reviewer: { id } })),
+          });
+        }
+        return { name, deployment_branch_policy: current.deployment_branch_policy, protection_rules: rules };
       } else if (method === 'PUT') {
-        const policy = (body as { deployment_branch_policy?: FakeEnvironment['deployment_branch_policy'] }).deployment_branch_policy ?? null;
-        repo.environments = { ...environments, [name]: { deployment_branch_policy: policy, branchPolicies: current?.branchPolicies ?? [] } };
+        // Like GitHub, a PUT replaces the protection rules it doesn't mention.
+        const fields = body as {
+          deployment_branch_policy?: FakeEnvironment['deployment_branch_policy'];
+          wait_timer?: number;
+          reviewers?: FakeEnvironment['reviewers'];
+          prevent_self_review?: boolean;
+        };
+        repo.environments = {
+          ...environments,
+          [name]: {
+            deployment_branch_policy: fields.deployment_branch_policy ?? null,
+            branchPolicies: current?.branchPolicies ?? [],
+            ...(fields.wait_timer === undefined ? {} : { waitTimer: fields.wait_timer }),
+            ...(fields.reviewers === undefined ? {} : { reviewers: fields.reviewers }),
+            ...(fields.prevent_self_review === undefined ? {} : { preventSelfReview: fields.prevent_self_review }),
+          },
+        };
         return {};
       }
     }

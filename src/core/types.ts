@@ -50,6 +50,7 @@ export interface Options {
   /** `branch` defaults to the repo's default branch. */
   environment?: { name: string; branch?: string } | false;
   prune?: boolean;
+  /** Reuse a setup found through legacy repo variables (default `false`). A function decides per candidate. */
   adopt?: boolean | ((candidate: AdoptCandidate) => Promise<boolean>);
   local?: LocalFiles;
   onEvent?: (event: ProgressEvent) => void;
@@ -76,6 +77,8 @@ export interface Context {
   roles: string[];
   apis: string[];
   runtimeServiceAccounts: string[];
+  /** Set when the pool, provider, and service account come from legacy repo variables. */
+  adopted?: AdoptCandidate;
 }
 
 export type CheckStatus = 'pass' | 'warn' | 'fail' | 'skipped';
@@ -124,6 +127,13 @@ export interface ApplyResult {
   manual: Change[];
   status: StatusReport;
 }
+
+export interface SetupOptions extends Options {
+  /** Called with the plan before anything is written; return `false` to cancel. Default: always apply. */
+  confirm?: (plan: Plan) => Promise<boolean>;
+}
+
+export type SetupResult = ApplyResult | { cancelled: true; plan: Plan };
 
 export type ProgressEvent =
   | { type: 'check'; check: Check }

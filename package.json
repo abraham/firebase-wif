@@ -19,6 +19,10 @@
       "types": "./dist/presets.d.ts",
       "default": "./dist/presets.js"
     },
+    "./gh": {
+      "types": "./dist/gh.d.ts",
+      "default": "./dist/gh.js"
+    },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "default": "./dist/testing/index.js"

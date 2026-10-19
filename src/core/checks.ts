@@ -110,8 +110,9 @@ const extraRoles: Advisory = {
     if (!extra.length) return pass('no roles beyond the requested ones');
     const account = await readServiceAccount(rt);
     const managed = account.kind === 'found' && account.value.description?.includes(MANAGED_MARKER);
+    const note = rt.prune && !managed ? " (not pruned: firebase-wif doesn't manage this service account)" : '';
     return warn(
-      `${rt.ctx.serviceAccount} also has ${extra.join(', ')}`,
+      `${rt.ctx.serviceAccount} also has ${extra.join(', ')}${note}`,
       managed ? 'firebase-wif setup --prune' : 'Remove the extra roles if deploys no longer need them.',
     );
   },

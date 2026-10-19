@@ -1,3 +1,4 @@
+import { findAdoptCandidate } from './adopt.js';
 import { createGitHubClient, toGitHubClient, toGoogleClient } from './clients.js';
 import { GCP_ADVISORIES, GITHUB_ADVISORIES, LOCAL_CHECKS, type Advisory } from './checks.js';
 import { FirebaseWifError, statusOf } from './errors.js';
@@ -23,6 +24,8 @@ import {
 import { RESOURCES, type Outcome, type Resource } from './resources.js';
 import { createMemo, CRM, read, type Read, type RepoResource, type Runtime } from './runtime.js';
 import type {
+  AdoptCandidate,
+  ApplyResult,
   Change,
   Check,
   Context,
@@ -31,8 +34,11 @@ import type {
   Options,
   Plan,
   Preflight,
+  SetupOptions,
+  SetupResult,
   StatusReport,
 } from './types.js';
+import { defaultSleep, type Writer } from './writes.js';
 import { apisFor, PRESET_NAMES, resolvePresets, rolesFor } from '../presets.js';
 
 /** Everything `setup` calls, so a preflight can say exactly what the operator lacks. */
@@ -125,6 +131,7 @@ const buildContext = (
   projectNumber: string,
   variables: Context['variables'],
   values: Map<string, Read<string>>,
+  adopted: AdoptCandidate | undefined,
 ): Context => {
   const { projectId } = options;
   const found = (name: string | undefined) => {
@@ -133,9 +140,9 @@ const buildContext = (
   };
 
   // Existing repo variables point at the resources to check, unless flags override them.
-  const fromVariable = parseProviderName(found(variables ? variables.provider : undefined) ?? '');
+  const fromVariable = parseProviderName(found(variables ? variables.provider : undefined) ?? adopted?.provider ?? '');
   const sameProject = fromVariable?.projectNumber === projectNumber ? fromVariable : undefined;
-  const variableAccount = found(variables ? variables.serviceAccount : undefined);
+  const variableAccount = found(variables ? variables.serviceAccount : undefined) ?? adopted?.serviceAccount;
 
   const pool = validatePoolOrProvider('pool', options.names?.pool ?? sameProject?.pool ?? DEFAULT_POOL);
   const provider = validatePoolOrProvider('provider', options.names?.provider ?? sameProject?.provider ?? defaultProviderId(repo.id));
@@ -180,7 +187,28 @@ const buildContext = (
     roles: rolesFor({ presets, roles: (options.roles ?? []).map(validateRole), scheduler: options.scheduler }),
     apis: apisFor(presets),
     runtimeServiceAccounts,
+    ...(adopted ? { adopted } : {}),
   };
+};
+
+/** Offers a legacy setup for adoption when this repo has none of the expected variables yet. */
+const considerAdoption = async (
+  options: Options,
+  github: GitHubClient | undefined,
+  variables: Context['variables'],
+  values: Map<string, Read<string>>,
+  project: { projectId: string; projectNumber: string },
+): Promise<AdoptCandidate | undefined> => {
+  if (!options.adopt || !github || !variables) return undefined;
+  if ([variables.provider, variables.serviceAccount].some((name) => values.get(name)?.kind !== 'missing')) return undefined;
+  const listed = await read(() =>
+    github.request<{ variables?: { name: string; value: string }[] }>('GET', `/repos/${options.repo}/actions/variables?per_page=30`),
+  );
+  if (listed.kind !== 'found') return undefined;
+  const candidate = findAdoptCandidate(listed.value.variables ?? [], project);
+  if (!candidate) return undefined;
+  const accepted = typeof options.adopt === 'function' ? await options.adopt(candidate) : true;
+  return accepted ? candidate : undefined;
 };
 
 type Entry = { resource: Resource } | { advisory: Advisory };
@@ -236,6 +264,7 @@ const toCheck = (resource: Resource, outcome: Outcome): Check => {
 interface Inspection {
   report: StatusReport;
   blocked: FirebaseWifError[];
+  runtime: Runtime;
 }
 
 const inspect = async (options: Options): Promise<Inspection> => {
@@ -256,7 +285,8 @@ const inspect = async (options: Options): Promise<Inspection> => {
   const repo = await fetchRepo(github ?? withSignal(createGitHubClient(), signal), options.repo, Boolean(github));
   const projectNumber = await fetchProjectNumber(google, options.projectId);
   const values = await readVariables(github, options.repo, variables);
-  const ctx = buildContext(options, repo, projectNumber, variables, values);
+  const adopted = await considerAdoption(options, github, variables, values, { projectId: options.projectId, projectNumber });
+  const ctx = buildContext(options, repo, projectNumber, variables, values, adopted);
   const preflight = await runPreflight(google, options.projectId, repo, Boolean(github));
 
   const rt: Runtime = {
@@ -267,6 +297,7 @@ const inspect = async (options: Options): Promise<Inspection> => {
     repo,
     preflight,
     variableValues: values,
+    prune: Boolean(options.prune),
     memo: createMemo(),
   };
 
@@ -293,22 +324,112 @@ const inspect = async (options: Options): Promise<Inspection> => {
   return {
     report: { ok: !checks.some((check) => check.status === 'fail'), context: ctx, checks, changes, preflight },
     blocked,
+    runtime: rt,
   };
 };
 
 /** Read-only: every reconcile resource's diff plus the advisory checks. */
 export const status = async (options: Options): Promise<StatusReport> => (await inspect(options)).report;
 
+/** Throws `MISSING_PERMISSIONS` when the plan writes to Google Cloud and the preflight found gaps. */
+export const assertCanApply = (changes: Change[], preflight: Preflight) => {
+  const { missingPermissions } = preflight;
+  if (!missingPermissions.length || !changes.some((c) => !c.manual && c.resource.startsWith('gcp.'))) return;
+  throw new FirebaseWifError('MISSING_PERMISSIONS', `You're missing permissions that setup needs: ${missingPermissions.join(', ')}.`, {
+    fix: 'Ask a project owner to run firebase-wif setup.',
+    details: { missingPermissions },
+  });
+};
+
+const applyError = (error: unknown, failed: Change, applied: Change[]): unknown => {
+  if ((error as Error | undefined)?.name === 'AbortError') return error;
+  const done = applied.length ? ` Already applied: ${applied.map((c) => c.description).join('; ')}.` : '';
+  const details = { failed, applied: [...applied] };
+  if (error instanceof FirebaseWifError) return new FirebaseWifError(error.code, `${error.message}${done}`, { fix: error.fix, details });
+  const status = statusOf(error);
+  const reason = error instanceof Error ? error.message.slice(0, 200) : 'unknown error';
+  return new FirebaseWifError('APPLY_FAILED', `Couldn't ${failed.description}${status ? ` (${status})` : ''}: ${reason}.${done}`, {
+    fix: 'Fix the cause, then re-run firebase-wif setup; every step is safe to repeat.',
+    details,
+  });
+};
+
+/** Re-reads and applies each resource in order, then re-runs status. */
+const applyChanges = async (options: Options, inspection: Inspection, signal: AbortSignal | undefined): Promise<ApplyResult> => {
+  const { runtime: base, report } = inspection;
+  assertCanApply(report.changes, report.preflight);
+  const google = withSignal(base.google, signal);
+  const github = base.github && withSignal(base.github, signal);
+  const w: Writer = {
+    sleep: options.sleep ?? defaultSleep,
+    emit: (event) => options.onEvent?.(event),
+    signal,
+    createdServiceAccount: false,
+  };
+
+  const applied: Change[] = [];
+  const manual: Change[] = [];
+  for (const resource of RESOURCES) {
+    let pending: Change[] = [];
+    // A second pass covers follow-up changes, like patching a provider right after restoring it.
+    for (let pass = 0; pass < 2; pass++) {
+      signal?.throwIfAborted();
+      const rt: Runtime = {
+        ...base,
+        google,
+        github,
+        memo: createMemo(),
+        variableValues:
+          resource.id === 'gh.variables' ? await readVariables(github, base.ctx.repo, base.ctx.variables) : base.variableValues,
+      };
+      const outcome = await resource.evaluate(rt);
+      if (outcome.kind === 'blocked') throw applyError(outcome.error, { resource: resource.id, action: 'update', description: outcome.message }, applied);
+      const changes = outcome.kind === 'drift' ? outcome.changes : outcome.kind === 'skipped' ? (outcome.changes ?? []) : [];
+      pending = changes.filter((c) => c.manual);
+      const automatic = changes.filter((c) => !c.manual);
+      if (!automatic.length) break;
+
+      for (const change of automatic) w.emit({ type: 'change:start', change });
+      try {
+        await resource.apply(rt, w);
+      } catch (error) {
+        throw applyError(error, automatic[0]!, applied);
+      }
+      for (const change of automatic) {
+        applied.push(change);
+        w.emit({ type: 'change:done', change });
+      }
+    }
+    manual.push(...pending);
+  }
+
+  const { report: after } = await inspect({
+    ...options,
+    google: base.google,
+    github: base.github ?? false,
+    adopt: Boolean(base.ctx.adopted),
+    signal,
+  });
+  return { applied, manual, status: after };
+};
+
 /** Read-only: the ordered changes `setup` would make. */
 export const plan = async (options: Options): Promise<Plan> => {
-  const { report, blocked } = await inspect(options);
-  if (blocked[0]) throw blocked[0];
+  const inspection = await inspect(options);
+  if (inspection.blocked[0]) throw inspection.blocked[0];
+  const { report } = inspection;
   return {
     context: report.context,
     changes: report.changes,
     preflight: report.preflight,
-    apply: async () => {
-      throw new FirebaseWifError('NOT_IMPLEMENTED', 'Applying a plan arrives with firebase-wif setup in a later release.');
-    },
+    apply: (applyOptions) => applyChanges(options, inspection, applyOptions?.signal ?? options.signal),
   };
+};
+
+/** Plans, asks `confirm`, then applies. Throws `MISSING_PERMISSIONS` before writing anything. */
+export const setup = async ({ confirm, ...options }: SetupOptions): Promise<SetupResult> => {
+  const planned = await plan(options);
+  assertCanApply(planned.changes, planned.preflight);
+  if (confirm && !(await confirm(planned))) return { cancelled: true, plan: planned };
+  return planned.apply();
 };

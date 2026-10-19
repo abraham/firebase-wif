@@ -20,7 +20,15 @@ describe('createFakeGoogle', () => {
     const google = createFakeGoogle(seed);
     google.state.projects[0]!.enabledServices.push('x');
     expect(seed.projects[0]!.enabledServices).toEqual([]);
-    expect(createFakeGoogle().state).toEqual({ projects: [], pools: {}, providers: {}, serviceAccounts: {}, forbidden: [] });
+    expect(createFakeGoogle().state).toEqual({
+      projects: [],
+      pools: {},
+      providers: {},
+      serviceAccounts: {},
+      forbidden: [],
+      failures: [],
+      pendingPolls: 0,
+    });
   });
 
   it('serves projects by ID or number', async () => {
@@ -109,5 +117,89 @@ describe('createFakeGoogle', () => {
     ]);
     expect(google.state.projects[0]!.projectId).toBe('demo-project');
     await expect(google.request('GET', 'https://example.test/unknown')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('enables services through a long-running operation', async () => {
+    const google = fake();
+    google.state.pendingPolls = 1;
+    const op = await google.request<{ name: string; done: boolean }>('POST', `${SU}/projects/123/services:batchEnable`, {
+      serviceIds: ['sts.googleapis.com', 'iam.googleapis.com'],
+    });
+    expect(op).toEqual({ name: 'operations/op-1', done: false });
+    expect(google.state.projects[0]!.enabledServices).toEqual(['iam.googleapis.com', 'sts.googleapis.com']);
+    expect(await google.request('GET', `${SU}/${op.name}`)).toEqual({ name: op.name, done: true });
+    expect(await google.request('GET', `${SU}/${op.name}`)).toEqual({ name: op.name, done: true });
+  });
+
+  it('creates, patches, and restores pools and providers', async () => {
+    const google = fake();
+    const parent = `${IAM}/projects/demo-project/locations/global/workloadIdentityPools`;
+    const op = await google.request<{ name: string }>('POST', `${parent}?workloadIdentityPoolId=other`, { displayName: 'Other' });
+    expect(op).toEqual({ name: 'projects/123/locations/global/workloadIdentityPools/other/operations/op-1', done: true });
+    expect(await google.request('GET', `${IAM}/${op.name}`)).toEqual({ name: op.name, done: true });
+    expect(google.state.pools['projects/123/locations/global/workloadIdentityPools/other']).toEqual({
+      state: 'ACTIVE',
+      disabled: false,
+      displayName: 'Other',
+    });
+    await expect(google.request('POST', `${parent}?workloadIdentityPoolId=github`, {})).rejects.toMatchObject({ status: 409 });
+
+    await google.request('POST', `${IAM}/${POOL}/providers?workloadIdentityPoolProviderId=new`, { oidc: { issuerUri: 'https://x' } });
+    expect(google.state.providers[`${POOL}/providers/new`]).toMatchObject({ state: 'ACTIVE', oidc: { issuerUri: 'https://x' } });
+    await expect(
+      google.request('POST', `${IAM}/projects/123/locations/global/workloadIdentityPools/missing/providers?workloadIdentityPoolProviderId=x`, {}),
+    ).rejects.toMatchObject({ status: 404 });
+
+    await google.request('PATCH', `${IAM}/${POOL}/providers/gh?updateMask=attributeCondition,disabled`, {
+      attributeCondition: 'y',
+      disabled: true,
+      displayName: 'ignored',
+    });
+    expect(google.state.providers[`${POOL}/providers/gh`]).toEqual({ attributeCondition: 'y', disabled: true });
+
+    await expect(google.request('POST', `${IAM}/${POOL}:undelete`, {})).rejects.toMatchObject({ status: 400 });
+    google.state.pools[POOL]!.state = 'DELETED';
+    await google.request('POST', `${IAM}/${POOL}:undelete`, {});
+    expect(google.state.pools[POOL]!.state).toBe('ACTIVE');
+    await expect(google.request('DELETE', `${IAM}/${POOL}`)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('enforces the allowed issuers org policy when set', async () => {
+    const google = fake();
+    google.state.allowedIssuers = ['https://gitlab.com'];
+    await expect(
+      google.request('POST', `${IAM}/${POOL}/providers?workloadIdentityPoolProviderId=new`, { oidc: { issuerUri: 'https://x' } }),
+    ).rejects.toMatchObject({ status: 400, message: expect.stringContaining('constraints/iam.workloadIdentityPoolProviders') });
+  });
+
+  it('creates and enables service accounts', async () => {
+    const google = fake();
+    const created = await google.request('POST', `${IAM}/projects/demo-project/serviceAccounts`, {
+      accountId: 'deployer',
+      serviceAccount: { displayName: 'Deployer', description: 'd' },
+    });
+    expect(created).toEqual({ email: 'deployer@demo-project.iam.gserviceaccount.com', displayName: 'Deployer', description: 'd' });
+    await expect(
+      google.request('POST', `${IAM}/projects/demo-project/serviceAccounts`, { accountId: 'deployer' }),
+    ).rejects.toMatchObject({ status: 409 });
+
+    google.state.serviceAccounts['deployer@demo-project.iam.gserviceaccount.com']!.disabled = true;
+    await google.request('POST', `${IAM}/projects/-/serviceAccounts/deployer@demo-project.iam.gserviceaccount.com:enable`, {});
+    expect(google.state.serviceAccounts['deployer@demo-project.iam.gserviceaccount.com']!.disabled).toBe(false);
+  });
+
+  it('injects one-off failures', async () => {
+    const google = fake();
+    google.state.failures = [
+      { url: ':setIamPolicy', status: 400, message: 'member does not exist', times: 2 },
+      { url: '/projects/demo-project', method: 'DELETE', status: 500 },
+    ];
+    const url = `${CRM}/projects/demo-project:setIamPolicy`;
+    await expect(google.request('POST', url, { policy: {} })).rejects.toMatchObject({ status: 400, message: 'member does not exist' });
+    await expect(google.request('POST', url, { policy: {} })).rejects.toMatchObject({ status: 400 });
+    await google.request('POST', url, { policy: {} });
+    expect(google.state.failures).toEqual([{ url: '/projects/demo-project', method: 'DELETE', status: 500 }]);
+    await google.request('GET', `${CRM}/projects/demo-project`);
+    expect(google.state.failures).toHaveLength(1);
   });
 });
