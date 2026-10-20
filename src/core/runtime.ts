@@ -155,5 +155,5 @@ export const providerId = (ctx: Context): string => ctx.provider.split('/').pop(
 export const repoPrincipal = (ctx: Context): string =>
   `principalSet://iam.googleapis.com/${ctx.pool}/attribute.repository_id/${ctx.repoId}`;
 
-/** Deploy roles for another project, using the trust chain set up in the home project (5.8). */
+/** Deploy roles for another project, using the trust chain set up in the home project (docs/multi-project.md). */
 export const isCrossProject = (ctx: Context): boolean => ctx.homeProjectId !== ctx.projectId;

@@ -257,7 +257,7 @@ describe('firebase-wif setup', () => {
 
   it('prints the plan as JSON with --dry-run --json', async () => {
     const { code, stdout } = await cli(
-      ['setup', '--dry-run', '--json', '--prune', '--scheduler', '--preset', 'functions'],
+      ['setup', '--dry-run', '--json', '--prune', '--role', 'roles/cloudscheduler.admin', '--preset', 'functions'],
       brokenFakes(),
     );
     expect(code).toBe(0);

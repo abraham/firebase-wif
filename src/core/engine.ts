@@ -54,7 +54,7 @@ export const SETUP_PERMISSIONS: readonly string[] = [
   'serviceusage.services.enable',
 ];
 
-/** What `setup` calls in a project that reuses another project's trust chain (5.8). */
+/** What `setup` calls in a project that reuses another project's trust chain (docs/multi-project.md). */
 export const CROSS_PROJECT_PERMISSIONS: readonly string[] = [
   'iam.serviceAccounts.setIamPolicy',
   'resourcemanager.projects.setIamPolicy',
@@ -248,7 +248,7 @@ const buildContext = (
             branch: options.environment?.branch ?? repo.default_branch,
           },
     presets,
-    roles: rolesFor({ presets, roles: (options.roles ?? []).map(validateRole), scheduler: options.scheduler }),
+    roles: rolesFor({ presets, roles: (options.roles ?? []).map(validateRole) }),
     apis: home ? apisFor(presets).filter((api) => !TOKEN_EXCHANGE_APIS.includes(api)) : apisFor(presets),
     runtimeServiceAccounts,
     ...(adopted ? { adopted } : {}),

@@ -6,7 +6,6 @@ import {
   PRESETS,
   resolvePresets,
   rolesFor,
-  SCHEDULER_ROLE,
   SERVICE_ACCOUNT_USER_ROLE,
 } from '../src/presets.js';
 
@@ -36,11 +35,6 @@ describe('resolvePresets', () => {
 describe('rolesFor', () => {
   it('keeps hosting to one role', () => {
     expect(rolesFor({ presets: ['hosting'] })).toEqual(['roles/firebasehosting.admin']);
-  });
-
-  it('adds the scheduler role only with functions', () => {
-    expect(rolesFor({ presets: ['hosting'], scheduler: true })).not.toContain(SCHEDULER_ROLE);
-    expect(rolesFor({ presets: ['functions'], scheduler: true })).toContain(SCHEDULER_ROLE);
   });
 
   it('deduplicates and sorts with extra roles', () => {

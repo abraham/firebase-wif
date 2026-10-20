@@ -24,7 +24,6 @@ Options:
   --service-account <id|email>  Deploy service account (default: github-<repoId>)
   --preset <name>               Role preset, repeatable: ${PRESET_NAMES.join(', ')} (default: from firebase.json)
   --role <role>                 Extra project role, repeatable
-  --scheduler                   Add roles/cloudscheduler.admin to the functions preset
   --runtime-service-account <email>
                                 Functions runtime service account, repeatable (default: the compute default)
   --environment <name>          GitHub environment (default: ${DEFAULT_ENVIRONMENT})
@@ -106,7 +105,6 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
         'service-account': { type: 'string' },
         preset: { type: 'string', multiple: true },
         role: { type: 'string', multiple: true },
-        scheduler: { type: 'boolean' },
         'runtime-service-account': { type: 'string', multiple: true },
         environment: { type: 'string' },
         'no-environment': { type: 'boolean' },
@@ -213,7 +211,7 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
     const prefix = values['variable-prefix'] ?? DEFAULT_VARIABLE_PREFIX;
     const interactive = (deps.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY)) && !values.json;
     const ask = deps.prompt ?? askOnTerminal;
-    // Later aliases reuse the first one's provider and service account (5.8).
+    // Later aliases reuse the first one's provider and service account (docs/multi-project.md).
     let home: Options['home'];
     let worst: number = EXIT.ok;
 
@@ -235,7 +233,6 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
         presets: presets?.length ? presets : 'auto',
         firebaseJson: resolved.firebaseJson,
         roles: values.role,
-        scheduler: values.scheduler,
         runtimeServiceAccounts: values['runtime-service-account'],
         names: { pool: values.pool, provider: values.provider, serviceAccount: values['service-account'] },
         variables: { provider: `${prefix}PROVIDER`, serviceAccount: `${prefix}SERVICE_ACCOUNT` },

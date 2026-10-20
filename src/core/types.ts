@@ -40,7 +40,6 @@ export interface Options {
   presets?: PresetName[] | 'auto';
   firebaseJson?: Record<string, unknown>;
   roles?: string[];
-  scheduler?: boolean;
   runtimeServiceAccounts?: string[];
   names?: { pool?: string; provider?: string; serviceAccount?: string };
   variables?: { provider: string; serviceAccount: string } | false;
