@@ -1,7 +1,7 @@
 # CLI
 
-Code: `src/cli/main.ts`, `src/cli/render.ts`, `src/cli/index.ts`
-Tests: `test/cli/main.test.ts`, `test/cli/render.test.ts`, `test/cli/index.test.ts`, `test/structure.test.ts`
+Code: `src/cli/` (`main.ts`, `args.ts`, `options.ts`, `clients.ts`, `status.ts`, `setup.ts`, `prompt.ts`, `output.ts`, `render.ts`, `index.ts`)
+Tests: `test/cli/`, `test/structure.test.ts`
 
 The `firebase-wif` command is a thin layer over the Node API. It discovers the project and repo, gets credentials, calls `status`, `plan`, or `setup`, and renders the result. Every decision about what to check or change lives in the engine, so the CLI only owns arguments, prompts, output, and exit codes. It imports only from the public entry points (see `node-api.md`), so a program can do anything it does.
 
@@ -178,5 +178,6 @@ Commands, flags, exit codes, and the JSON output shapes are public API: changing
 
 - `test/cli/main.test.ts` runs `main()` in-process with injected dependencies: the `/testing` fakes as the Google and GitHub clients, a temporary repo directory, a fake `git` remote, captured stdout and stderr, an injectable terminal check and prompt, and an injectable abort signal standing in for Ctrl-C. It covers the full status report as an inline snapshot, every exit code, JSON output, `--help` and `--version` ahead of other errors, the prompt and `--yes` paths, missing permissions before any prompt, adoption, missing GitHub credentials, interrupting during apply and at a prompt, `--all-aliases` in text and JSON, and that `--dry-run` and declined prompts write nothing.
 - `test/cli/render.test.ts` checks the text rendering of reports and plans directly: grouping, symbols and signs, fix lines, summary counts, and the `home` and `adopt` header lines.
+- Each module has its own unit tests: `args.test.ts` for parsing and every usage error, `options.test.ts` for how flags map to engine options, `output.test.ts` for text, JSON, `--all-aliases` collection, and interruption, `clients.test.ts`, `prompt.test.ts`, `status.test.ts`, and `setup.test.ts`.
 - `test/cli/index.test.ts` checks that the bin entry point passes `process.argv` to `main()`, ties SIGINT to its abort signal, and sets `process.exitCode` from its result.
 - `test/structure.test.ts` checks that `src/cli/` imports only from the public entry points.

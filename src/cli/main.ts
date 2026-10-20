@@ -1,422 +1,122 @@
 import { readFile } from 'node:fs/promises';
-import { createInterface } from 'node:readline/promises';
-import { parseArgs } from 'node:util';
 import {
-  DEFAULTS,
-  defaultGitHubClient,
-  defaultGoogleClient,
-  FirebaseWifError,
-  plan,
   projectAliases,
   resolveContext,
-  setup,
-  status,
-  type Context,
   type Exec,
   type GitHubClient,
   type GoogleClient,
   type Options,
-  type Plan,
-  type SetupResult,
 } from '../index.js';
-import { isPresetName, PRESET_NAMES } from '../presets.js';
-import { renderPlan, renderStatus, type Sources } from './render.js';
-
-export const USAGE = `Usage: firebase-wif [status|setup] [options]
-
-Commands:
-  status                        Check the Firebase project and GitHub repo (default)
-  setup                         Create or repair everything status checks
-
-Options:
-  --project <id|alias>          Firebase project ID or .firebaserc alias
-  --all-aliases                 Run once per .firebaserc project, sharing the default project's trust chain
-  --repo <owner/name>           GitHub repository
-  --pool <id>                   Workload identity pool ID (default: github)
-  --provider <id>               Provider ID (default: github-<repoId>)
-  --service-account <id|email>  Deploy service account (default: github-<repoId>)
-  --preset <name>               Role preset, repeatable: ${PRESET_NAMES.join(', ')} (default: from firebase.json)
-  --role <role>                 Extra project role, repeatable
-  --runtime-service-account <email>
-                                Functions runtime service account, repeatable (default: the compute default)
-  --environment <name>          GitHub environment (default: ${DEFAULTS.environment})
-  --no-environment              Skip the GitHub environment
-  --branch <name>               Branch allowed to deploy (default: the repo's default branch)
-  --any-branch                  Let any branch deploy to the environment
-  --variable-prefix <prefix>    Repo variable prefix (default: ${DEFAULTS.variablePrefix})
-  --json                        Print JSON
-  --cwd <dir>                   Directory to look for firebase.json and the git remote
-  -h, --help                    Show this help
-  --version                     Show the version
-
-Setup options:
-  --dry-run                     Print the plan without changing anything
-  -y, --yes                     Apply without asking (required when stdin isn't a terminal)
-  --adopt                       Adopt a setup found through legacy repo variables without asking
-  --prune                       Remove unrequested roles from a service account firebase-wif manages
-`;
+import { parseCli, USAGE, type CliArgs } from './args.js';
+import { connect } from './clients.js';
+import { buildOptions } from './options.js';
+import { createOutput, EXIT, type Output } from './output.js';
+import { askOnTerminal, createAsk, type Prompt } from './prompt.js';
+import { runSetup } from './setup.js';
+import { runStatus } from './status.js';
 
 export interface CliDeps {
-  cwd?: string;
-  env?: NodeJS.ProcessEnv;
-  exec?: Exec;
-  stdout?: (text: string) => void;
-  stderr?: (text: string) => void;
-  googleClient?: () => Promise<GoogleClient>;
-  githubClient?: () => Promise<GitHubClient>;
+  cwd?: string | undefined;
+  env?: NodeJS.ProcessEnv | undefined;
+  exec?: Exec | undefined;
+  stdout?: ((text: string) => void) | undefined;
+  stderr?: ((text: string) => void) | undefined;
+  googleClient?: (() => Promise<GoogleClient>) | undefined;
+  githubClient?: (() => Promise<GitHubClient>) | undefined;
   /** Whether prompts can be shown; defaults to stdin and stdout being terminals. */
-  interactive?: boolean;
-  prompt?: (question: string, signal?: AbortSignal) => Promise<boolean>;
+  interactive?: boolean | undefined;
+  prompt?: Prompt | undefined;
   /** Aborted on Ctrl-C. */
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }
 
-export const EXIT = { ok: 0, failed: 1, usage: 2, credentials: 3, interrupted: 130 } as const;
+export { EXIT, USAGE };
 
-const NEXT_STEPS =
-  'IAM changes can take a few minutes to take effect. Workflow examples: https://github.com/abraham/firebase-wif#usage\n';
-
-const exitFor = (error: unknown): number => {
-  if (!(error instanceof FirebaseWifError)) return EXIT.failed;
-  switch (error.code) {
-    case 'INVALID_NAME':
-      return EXIT.usage;
-    case 'NO_GOOGLE_CREDENTIALS':
-    case 'NO_GITHUB_CREDENTIALS':
-    case 'PROJECT_NOT_FOUND':
-    case 'REPO_NOT_FOUND':
-    case 'MISSING_PERMISSIONS':
-      return EXIT.credentials;
-    default:
-      return EXIT.failed;
-  }
+const readVersion = async (): Promise<string> => {
+  const { version } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as {
+    version: string;
+  };
+  return version;
 };
-
-const askOnTerminal = async (question: string, signal?: AbortSignal): Promise<boolean> => {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  // In raw mode, Ctrl-C reaches readline as a key instead of a signal.
-  rl.on('SIGINT', () => process.emit('SIGINT'));
-  try {
-    return /^y(es)?$/i.test((await rl.question(`${question} [y/N] `, { signal })).trim());
-  } finally {
-    rl.close();
-  }
-};
-
-const OPTIONS = {
-  project: { type: 'string' },
-  'all-aliases': { type: 'boolean' },
-  repo: { type: 'string' },
-  pool: { type: 'string' },
-  provider: { type: 'string' },
-  'service-account': { type: 'string' },
-  preset: { type: 'string', multiple: true },
-  role: { type: 'string', multiple: true },
-  'runtime-service-account': { type: 'string', multiple: true },
-  environment: { type: 'string' },
-  'no-environment': { type: 'boolean' },
-  'any-branch': { type: 'boolean' },
-  branch: { type: 'string' },
-  'variable-prefix': { type: 'string' },
-  json: { type: 'boolean' },
-  cwd: { type: 'string' },
-  'dry-run': { type: 'boolean' },
-  yes: { type: 'boolean', short: 'y' },
-  adopt: { type: 'boolean' },
-  prune: { type: 'boolean' },
-  help: { type: 'boolean', short: 'h' },
-  version: { type: 'boolean' },
-} as const;
 
 /** Runs the CLI and returns its exit code. */
 export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> => {
-  const env = deps.env ?? process.env;
   const stdout = deps.stdout ?? ((text: string) => process.stdout.write(text));
   const stderr = deps.stderr ?? ((text: string) => process.stderr.write(text));
 
-  // --help and --version win over every other error, so read them leniently first.
-  const lenient = parseArgs({ args: argv, allowPositionals: true, strict: false, options: OPTIONS }).values;
-  if (lenient.help) {
-    stdout(USAGE);
-    return EXIT.ok;
-  }
-  if (lenient.version) {
-    const { version } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as {
-      version: string;
-    };
-    stdout(`${version}\n`);
-    return EXIT.ok;
-  }
-
-  let parsed;
-  try {
-    parsed = parseArgs({ args: argv, allowPositionals: true, options: OPTIONS });
-  } catch (error) {
-    stderr(`${error instanceof Error ? error.message : String(error)}\n\n${USAGE}`);
-    return EXIT.usage;
-  }
-  const { values, positionals } = parsed;
-
-  const command = positionals[0] ?? 'status';
-  if (!['status', 'setup'].includes(command) || positionals.length > 1) {
-    stderr(`Unknown command: ${positionals.join(' ')}\n\n${USAGE}`);
-    return EXIT.usage;
-  }
-  const setupOnly = (['dry-run', 'yes', 'adopt', 'prune'] as const).filter((flag) => values[flag]);
-  if (command === 'status' && setupOnly.length) {
-    stderr(`--${setupOnly[0]} only works with setup.\n`);
-    return EXIT.usage;
-  }
-  if (values['any-branch'] && values.branch) {
-    stderr('Pass either --branch or --any-branch, not both.\n');
-    return EXIT.usage;
+  const parsed = parseCli(argv);
+  switch (parsed.kind) {
+    case 'help':
+      stdout(USAGE);
+      return EXIT.ok;
+    case 'version':
+      stdout(`${await readVersion()}\n`);
+      return EXIT.ok;
+    case 'usage-error':
+      stderr(parsed.message);
+      return EXIT.usage;
   }
 
-  // With --all-aliases, JSON output is one array with an entry per alias.
-  const all = Boolean(values['all-aliases']);
-  const collected: object[] = [];
-  let alias: string | undefined;
-  const emit = (payload: object) => {
-    if (all) collected.push({ alias, ...payload });
-    else stdout(`${JSON.stringify(payload, null, 2)}\n`);
-  };
-
-  const fail = (error: unknown, code: number) => {
-    if (deps.signal?.aborted) {
-      stderr('Interrupted.\n');
-      return EXIT.interrupted;
-    }
-    if (!(error instanceof FirebaseWifError)) throw error;
-    if (values.json) {
-      emit({ error: { code: error.code, message: error.message, fix: error.fix } });
-    } else {
-      stderr(`${error.message}${error.fix ? `\n  fix: ${error.fix}` : ''}\n`);
-    }
-    return code;
-  };
-
-  const presets = values.preset ?? [];
-  const unknownPreset = presets.find((name) => !isPresetName(name));
-  if (unknownPreset !== undefined) {
-    stderr(`Unknown preset "${unknownPreset}". Use one of: ${PRESET_NAMES.join(', ')}.\n`);
-    return EXIT.usage;
-  }
-  const knownPresets = presets.filter(isPresetName);
-  const cwd = values.cwd ?? deps.cwd;
-
-  const run = async (): Promise<number> => {
-    let targets: (string | undefined)[] = [values.project];
-    if (all) {
-      if (values.project) {
-        stderr('Pass either --project or --all-aliases, not both.\n');
-        return EXIT.usage;
-      }
-      let aliases;
-      try {
-        aliases = await projectAliases({ cwd });
-      } catch (error) {
-        return fail(error, EXIT.usage);
-      }
-      if (!aliases.length) {
-        stderr('--all-aliases needs project aliases in .firebaserc.\n');
-        return EXIT.usage;
-      }
-      targets = aliases.map((entry) => entry.alias);
-    }
-
-    let google: GoogleClient;
-    try {
-      google = await (deps.googleClient ?? (() => defaultGoogleClient({ env, exec: deps.exec })))();
-    } catch (error) {
-      return fail(error, EXIT.credentials);
-    }
-
-    let github: GitHubClient | false;
-    try {
-      github = await (deps.githubClient ?? (() => defaultGitHubClient({ env, exec: deps.exec })))();
-    } catch (error) {
-      if (!(error instanceof FirebaseWifError)) throw error;
-      stderr(`No GitHub credentials; skipping GitHub checks. Run gh auth login to include them.\n`);
-      github = false;
-    }
-
-    const prefix = values['variable-prefix'] ?? DEFAULTS.variablePrefix;
-    const interactive = (deps.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY)) && !values.json;
-    const prompt = deps.prompt ?? askOnTerminal;
-    const ask = async (question: string) => {
-      const answer = await prompt(question, deps.signal);
-      deps.signal?.throwIfAborted();
-      return answer;
-    };
-    // Later aliases reuse the first one's provider and service account (docs/multi-project.md).
-    let home: Options['home'];
-    let worst: number = EXIT.ok;
-
-    for (const [index, target] of targets.entries()) {
-      alias = target;
-      if (index > 0 && !values.json) stdout('\n');
-      let resolved;
-      try {
-        resolved = await resolveContext({ cwd, project: target, repo: values.repo, env, exec: deps.exec });
-      } catch (error) {
-        return fail(error, EXIT.usage);
-      }
-
-      const options: Options = {
-        projectId: resolved.projectId,
-        repo: resolved.repo,
-        google,
-        github,
-        presets: knownPresets.length ? knownPresets : 'auto',
-        roles: values.role,
-        runtimeServiceAccounts: values['runtime-service-account'],
-        names: { pool: values.pool, provider: values.provider, serviceAccount: values['service-account'] },
-        variables: { provider: `${prefix}PROVIDER`, serviceAccount: `${prefix}SERVICE_ACCOUNT` },
-        environment: values['no-environment']
-          ? false
-          : { name: values.environment ?? DEFAULTS.environment, branch: values['any-branch'] ? false : values.branch },
-        local: resolved.local,
-        signal: deps.signal,
-        ...(home ? { home } : {}),
-      };
-
-      const outcome =
-        command === 'setup'
-          ? await runSetup({
-              options: {
-                ...options,
-                prune: values.prune,
-                adopt: values.adopt
-                  ? true
-                  : interactive &&
-                    ((candidate) =>
-                      ask(
-                        `Adopt ${candidate.provider} and ${candidate.serviceAccount} from ${candidate.variables.provider} and ${candidate.variables.serviceAccount}?`,
-                      )),
-                ...(values.json
-                  ? {}
-                  : {
-                      onEvent: (event) => {
-                        if (event.type === 'change:done') stdout(`  ✓ ${event.change.description}\n`);
-                        if (event.type === 'retry')
-                          stdout(`    retrying in ${Math.round(event.delayMs / 1000)}s: ${event.reason}\n`);
-                      },
-                    }),
-              },
-              flags: { dryRun: Boolean(values['dry-run']), yes: Boolean(values.yes), json: Boolean(values.json) },
-              interactive,
-              ask,
-              sources: resolved.sources,
-              stdout,
-              stderr,
-              emit,
-              fail,
-            })
-          : await runStatus(options, resolved.sources);
-
-      worst = Math.max(worst, outcome.code);
-      // Without a home context to share, later aliases would plan a chain of their own.
-      if (!outcome.context) return worst;
-      home ??= { provider: outcome.context.provider, serviceAccount: outcome.context.serviceAccount };
-    }
-    return worst;
-  };
-
-  const runStatus = async (options: Options, sources: Sources): Promise<Outcome> => {
-    let report;
-    try {
-      // Status follows a legacy setup, so it reports what setup --adopt would do.
-      report = await status({ ...options, adopt: true });
-    } catch (error) {
-      return { code: fail(error, exitFor(error)) };
-    }
-    if (values.json) emit(report);
-    else stdout(renderStatus(report, sources));
-    return { code: report.ok ? EXIT.ok : EXIT.failed, context: report.context };
-  };
-
-  const code = await run();
-  if (all && values.json) stdout(`${JSON.stringify(collected, null, 2)}\n`);
+  const { args } = parsed;
+  const output = createOutput({ stdout, stderr, json: args.json, all: args.allAliases, signal: deps.signal });
+  const code = await run(args, deps, output);
+  output.flush();
   return code;
 };
 
-interface Outcome {
-  code: number;
-  /** Set when the project was checked or set up, so later aliases can share its trust chain. */
-  context?: Context;
-}
-
-const runSetup = async ({
-  options,
-  flags,
-  interactive,
-  ask,
-  sources,
-  stdout,
-  stderr,
-  emit,
-  fail,
-}: {
-  options: Options;
-  flags: { dryRun: boolean; yes: boolean; json: boolean };
-  interactive: boolean;
-  ask: (question: string) => Promise<boolean>;
-  sources: Sources;
-  stdout: (text: string) => void;
-  stderr: (text: string) => void;
-  emit: (payload: object) => void;
-  fail: (error: unknown, code: number) => number;
-}): Promise<Outcome> => {
-  if (flags.dryRun) {
-    try {
-      const planned = await plan(options);
-      const { context, changes, preflight } = planned;
-      if (flags.json) emit({ context, changes, preflight });
-      else stdout(renderPlan(planned, sources));
-      return { code: EXIT.ok, context };
-    } catch (error) {
-      return { code: fail(error, exitFor(error)) };
-    }
-  }
-
-  // Why `confirm` declined, since `setup` only reports that it was cancelled.
-  let declined: Outcome | undefined;
-  const confirm = async (planned: Plan): Promise<boolean> => {
-    if (!flags.json) stdout(renderPlan(planned, sources));
-    if (!planned.changes.length && !flags.json) {
-      declined = { code: EXIT.ok, context: planned.context };
-      return false;
-    }
-    if (flags.yes || planned.changes.every((change) => change.manual)) return true;
-    if (!interactive) {
-      stderr('Pass --yes to apply changes without a prompt.\n');
-      declined = { code: EXIT.usage };
-      return false;
-    }
-    if (!(await ask('Apply these changes?'))) {
-      stdout('Cancelled; nothing changed.\n');
-      declined = { code: EXIT.failed };
-      return false;
-    }
-    return true;
-  };
-
-  let result: SetupResult;
+/** The `.firebaserc` aliases to run, or the exit code when there are none. */
+const targetsFor = async (args: CliArgs, cwd: string | undefined, output: Output) => {
+  if (!args.allAliases) return [args.project];
+  let aliases;
   try {
-    result = await setup({ ...options, confirm });
+    aliases = await projectAliases({ cwd });
   } catch (error) {
-    return { code: fail(error, exitFor(error)) };
+    return output.fail(error, EXIT.usage);
   }
-  if (result.cancelled) return declined!;
+  if (!aliases.length) {
+    output.stderr('--all-aliases needs project aliases in .firebaserc.\n');
+    return EXIT.usage;
+  }
+  return aliases.map((entry) => entry.alias);
+};
 
-  const { cancelled: _, ...applied } = result;
-  if (flags.json) {
-    emit(applied);
-  } else {
-    stdout(`\n${renderStatus(result.status, sources)}`);
-    if (result.manual.length)
-      stdout(`Do by hand:\n${result.manual.map((change) => `  - ${change.description}\n`).join('')}`);
-    if (result.applied.length) stdout(NEXT_STEPS);
+const run = async (args: CliArgs, deps: CliDeps, output: Output): Promise<number> => {
+  const env = deps.env ?? process.env;
+  const cwd = args.cwd ?? deps.cwd;
+  const targets = await targetsFor(args, cwd, output);
+  if (typeof targets === 'number') return targets;
+
+  const connection = await connect({ ...deps, env }, output);
+  if (connection.kind === 'failed') return connection.code;
+  const { google, github } = connection;
+
+  const interactive = (deps.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY)) && !args.json;
+  const ask = createAsk(deps.prompt ?? askOnTerminal, deps.signal);
+  // Later aliases reuse the first one's provider and service account (docs/multi-project.md).
+  let home: Options['home'];
+  let worst: number = EXIT.ok;
+
+  for (const [index, target] of targets.entries()) {
+    output.setAlias(target);
+    if (index > 0 && !args.json) output.stdout('\n');
+    let resolved;
+    try {
+      resolved = await resolveContext({ cwd, project: target, repo: args.repo, env, exec: deps.exec });
+    } catch (error) {
+      return output.fail(error, EXIT.usage);
+    }
+
+    const options = buildOptions({ args, resolved, google, github, signal: deps.signal, home });
+    const { sources } = resolved;
+    const outcome =
+      args.command === 'setup'
+        ? await runSetup(options, { args, output, sources, ask, interactive })
+        : await runStatus(options, { output, sources });
+
+    worst = Math.max(worst, outcome.code);
+    // Without a home context to share, later aliases would plan a chain of their own.
+    if (!outcome.context) return worst;
+    home ??= { provider: outcome.context.provider, serviceAccount: outcome.context.serviceAccount };
   }
-  return { code: result.status.ok ? EXIT.ok : EXIT.failed, context: result.status.context };
+  return worst;
 };
