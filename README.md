@@ -3,7 +3,7 @@
 Deploy to Firebase from GitHub Actions with Workload Identity Federation (OIDC), without service account keys or `FIREBASE_TOKEN`.
 
 - **CLI**: `npx @abraham/firebase-wif status` checks the Google Cloud project and GitHub repo; `setup` creates or repairs everything, and is safe to re-run.
-- **GitHub Action**: `abraham/firebase-wif@v0` turns the job's OIDC token into Google credentials for `npx firebase-tools`, `FirebaseExtended/action-hosting-deploy`, and `w9jds/firebase-action`.
+- **GitHub Action**: `abraham/firebase-wif` turns the job's OIDC token into Google credentials for `npx firebase-tools`, `FirebaseExtended/action-hosting-deploy`, and `w9jds/firebase-action`.
 - **Node API**: the same engine as a library, for project CLIs that want their own UX.
 
 ## Quick start
@@ -40,7 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: npm ci && npm run build
-      - uses: abraham/firebase-wif@v0
+      - uses: abraham/firebase-wif@v0.1.0
         with:
           workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
           service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
@@ -61,7 +61,7 @@ Preview channels work the same way:
 
 ```yaml
 - id: wif
-  uses: abraham/firebase-wif@v0
+  uses: abraham/firebase-wif@v0.1.0
   with:
     workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
     service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
@@ -78,7 +78,7 @@ It runs in a container, so pass the credentials JSON instead of a file path:
 
 ```yaml
 - id: wif
-  uses: abraham/firebase-wif@v0
+  uses: abraham/firebase-wif@v0.1.0
   with:
     workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
     service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
@@ -153,7 +153,7 @@ The library never prints, prompts, or reads the environment or filesystem on its
 
 ## Versioning
 
-The npm package and the Action share a version. Every release gets a `v0.y.z` tag and moves the `v0.y` and `v0` tags. While on 0.x, a minor release may change the API, CLI flags, check IDs, or Action inputs; pin `@v0.y` or `@abraham/firebase-wif@~0.y` if you need stability.
+The npm package and the Action share a version. Every release gets one immutable `v0.y.z` tag; there are no `v0.y` or `v0` tags that move. Pin the Action to a full version and let Dependabot update it. While on 0.x, a minor release may change the API, CLI flags, check IDs, or Action inputs; pin `@abraham/firebase-wif@~0.y` if you need stability.
 
 ## License
 

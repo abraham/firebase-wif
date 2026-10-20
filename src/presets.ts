@@ -48,7 +48,6 @@ export const PRESETS: Readonly<Record<PresetName, Preset>> = {
   },
 };
 
-export const SCHEDULER_ROLE = 'roles/cloudscheduler.admin';
 export const SERVICE_ACCOUNT_USER_ROLE = 'roles/iam.serviceAccountUser';
 
 /** Presets for the products configured in `firebase.json`, or `hosting` when there are none. */
@@ -59,20 +58,8 @@ export const resolvePresets = (firebaseJson?: Record<string, unknown>): PresetNa
 
 const unique = (values: Iterable<string>): string[] => [...new Set(values)].sort();
 
-export const rolesFor = ({
-  presets,
-  roles = [],
-  scheduler = false,
-}: {
-  presets: PresetName[];
-  roles?: string[];
-  scheduler?: boolean;
-}): string[] =>
-  unique([
-    ...presets.flatMap((name) => PRESETS[name].roles),
-    ...(scheduler && presets.includes('functions') ? [SCHEDULER_ROLE] : []),
-    ...roles,
-  ]);
+export const rolesFor = ({ presets, roles = [] }: { presets: PresetName[]; roles?: string[] }): string[] =>
+  unique([...presets.flatMap((name) => PRESETS[name].roles), ...roles]);
 
 export const apisFor = (presets: PresetName[]): string[] =>
   unique([...BASE_APIS, ...presets.flatMap((name) => PRESETS[name].apis)]);

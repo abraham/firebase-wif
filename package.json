@@ -40,6 +40,7 @@
     "build": "tsc -p tsconfig.build.json",
     "build:action": "esbuild src/action/main.ts src/action/post.ts --bundle --platform=node --target=node24 --format=esm --legal-comments=none --outdir=dist/action",
     "typecheck": "tsc --noEmit",
+    "typecheck:consumer": "tsc -p test/consumer",
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
