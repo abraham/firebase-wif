@@ -8,6 +8,7 @@ var FirebaseWifError = class extends Error {
   code;
   fix;
   details;
+  // Errors raised mid-apply get their `ApplyFailure` details when the engine wraps them.
   constructor(code, message, options = {}) {
     super(message);
     this.name = "FirebaseWifError";

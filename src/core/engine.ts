@@ -34,6 +34,7 @@ import type {
   Options,
   Plan,
   Preflight,
+  ResourceId,
   SetupOptions,
   SetupResult,
   StatusReport,
@@ -291,7 +292,7 @@ const evaluate = (resource: Resource, rt: Runtime): Promise<Outcome> =>
     : resource.evaluate(rt);
 
 const entries = (ctx: Context): Entry[] => {
-  const resource = (id: string): Entry => ({ resource: RESOURCES.find((r) => r.id === id)! });
+  const resource = (id: ResourceId): Entry => ({ resource: RESOURCES.find((r) => r.id === id)! });
   const advisory = (value: Advisory): Entry => ({ advisory: value });
   return [
     ...LOCAL_CHECKS.map(advisory),
@@ -534,5 +535,5 @@ export const setup = async ({ confirm, ...options }: SetupOptions): Promise<Setu
   const planned = await plan(options);
   assertCanApply(planned.changes, planned.preflight);
   if (confirm && !(await confirm(planned))) return { cancelled: true, plan: planned };
-  return planned.apply();
+  return { ...(await planned.apply()), cancelled: false };
 };

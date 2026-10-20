@@ -27,7 +27,7 @@ import {
   type Runtime,
 } from './runtime.js';
 import { SERVICE_ACCOUNT_USER_ROLE } from '../presets.js';
-import type { Change, ChangeAction } from './types.js';
+import type { Change, ChangeAction, ResourceId } from './types.js';
 import { updatePolicy, waitForOperation, type Operation, type Writer } from './writes.js';
 
 export type Outcome =
@@ -38,7 +38,7 @@ export type Outcome =
 
 /** A resource `setup` reconciles; its check fails exactly when its plan has changes. */
 export interface Resource {
-  id: string;
+  id: ResourceId;
   severity: 'fail' | 'warn';
   /** `project` resources are reconciled in every project; `trust-chain` ones only in the home project. */
   scope: 'project' | 'trust-chain';
@@ -47,7 +47,7 @@ export interface Resource {
   apply(rt: Runtime, w: Writer): Promise<void>;
 }
 
-const change = (resource: string, action: ChangeAction, description: string, manual = false): Change =>
+const change = (resource: ResourceId, action: ChangeAction, description: string, manual = false): Change =>
   manual ? { resource, action, description, manual } : { resource, action, description };
 
 const drift = (changes: Change[], fix?: string): Outcome => ({

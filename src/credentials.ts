@@ -1,7 +1,7 @@
 import { FirebaseWifError } from './core/errors.js';
 import { parseProviderName, validateServiceAccountEmail } from './core/naming.js';
 
-export { FirebaseWifError } from './core/errors.js';
+export { FirebaseWifError, isFirebaseWifError } from './core/errors.js';
 
 const STS_URL = 'https://sts.googleapis.com/v1/token';
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';

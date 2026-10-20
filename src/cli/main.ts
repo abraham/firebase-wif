@@ -1,11 +1,24 @@
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
-import { defaultGitHubClient, defaultGoogleClient, type Exec } from '../core/clients.js';
-import { projectAliases, resolveContext } from '../core/context.js';
-import { assertCanApply, plan, status } from '../core/engine.js';
-import { FirebaseWifError } from '../core/errors.js';
-import { DEFAULT_ENVIRONMENT, DEFAULT_VARIABLE_PREFIX } from '../core/naming.js';
-import type { ApplyResult, Context, GitHubClient, GoogleClient, Options, Plan, PresetName } from '../core/types.js';
+import {
+  DEFAULTS,
+  defaultGitHubClient,
+  defaultGoogleClient,
+  FirebaseWifError,
+  plan,
+  projectAliases,
+  resolveContext,
+  setup,
+  status,
+  type Context,
+  type Exec,
+  type GitHubClient,
+  type GoogleClient,
+  type Options,
+  type Plan,
+  type PresetName,
+  type SetupResult,
+} from '../index.js';
 import { PRESET_NAMES } from '../presets.js';
 import { renderPlan, renderStatus, type Sources } from './render.js';
 
@@ -26,11 +39,11 @@ Options:
   --role <role>                 Extra project role, repeatable
   --runtime-service-account <email>
                                 Functions runtime service account, repeatable (default: the compute default)
-  --environment <name>          GitHub environment (default: ${DEFAULT_ENVIRONMENT})
+  --environment <name>          GitHub environment (default: ${DEFAULTS.environment})
   --no-environment              Skip the GitHub environment
   --branch <name>               Branch allowed to deploy (default: the repo's default branch)
   --any-branch                  Let any branch deploy to the environment
-  --variable-prefix <prefix>    Repo variable prefix (default: ${DEFAULT_VARIABLE_PREFIX})
+  --variable-prefix <prefix>    Repo variable prefix (default: ${DEFAULTS.variablePrefix})
   --json                        Print JSON
   --cwd <dir>                   Directory to look for firebase.json and the git remote
   -h, --help                    Show this help
@@ -208,7 +221,7 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
       github = false;
     }
 
-    const prefix = values['variable-prefix'] ?? DEFAULT_VARIABLE_PREFIX;
+    const prefix = values['variable-prefix'] ?? DEFAULTS.variablePrefix;
     const interactive = (deps.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY)) && !values.json;
     const ask = deps.prompt ?? askOnTerminal;
     // Later aliases reuse the first one's provider and service account (docs/multi-project.md).
@@ -231,14 +244,13 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
         google,
         github,
         presets: presets?.length ? presets : 'auto',
-        firebaseJson: resolved.firebaseJson,
         roles: values.role,
         runtimeServiceAccounts: values['runtime-service-account'],
         names: { pool: values.pool, provider: values.provider, serviceAccount: values['service-account'] },
         variables: { provider: `${prefix}PROVIDER`, serviceAccount: `${prefix}SERVICE_ACCOUNT` },
         environment: values['no-environment']
           ? false
-          : { name: values.environment ?? DEFAULT_ENVIRONMENT, branch: values['any-branch'] ? false : values.branch },
+          : { name: values.environment ?? DEFAULTS.environment, branch: values['any-branch'] ? false : values.branch },
         local: resolved.local,
         ...(home ? { home } : {}),
       };
@@ -330,49 +342,51 @@ const runSetup = async ({
   emit: (payload: object) => void;
   fail: (error: unknown, code: number) => number;
 }): Promise<Outcome> => {
-  let planned: Plan;
-  try {
-    planned = await plan(options);
-  } catch (error) {
-    return { code: fail(error, exitFor(error)) };
-  }
-  const { context } = planned;
-
-  if (flags.json && flags.dryRun) {
-    const { changes, preflight } = planned;
-    emit({ context, changes, preflight });
-    return { code: EXIT.ok, context };
-  }
-  if (!flags.json) stdout(renderPlan(planned, sources));
-  if (flags.dryRun || (!planned.changes.length && !flags.json)) return { code: EXIT.ok, context };
-
-  if (planned.changes.some((change) => !change.manual)) {
+  if (flags.dryRun) {
     try {
-      assertCanApply(planned.changes, planned.preflight);
+      const planned = await plan(options);
+      const { context, changes, preflight } = planned;
+      if (flags.json) emit({ context, changes, preflight });
+      else stdout(renderPlan(planned, sources));
+      return { code: EXIT.ok, context };
     } catch (error) {
       return { code: fail(error, exitFor(error)) };
     }
-    if (!flags.yes) {
-      if (!interactive) {
-        stderr('Pass --yes to apply changes without a prompt.\n');
-        return { code: EXIT.usage };
-      }
-      if (!(await ask('Apply these changes?'))) {
-        stdout('Cancelled; nothing changed.\n');
-        return { code: EXIT.failed };
-      }
-    }
   }
 
-  let result: ApplyResult;
+  // Why `confirm` declined, since `setup` only reports that it was cancelled.
+  let declined: Outcome | undefined;
+  const confirm = async (planned: Plan): Promise<boolean> => {
+    if (!flags.json) stdout(renderPlan(planned, sources));
+    if (!planned.changes.length && !flags.json) {
+      declined = { code: EXIT.ok, context: planned.context };
+      return false;
+    }
+    if (flags.yes || planned.changes.every((change) => change.manual)) return true;
+    if (!interactive) {
+      stderr('Pass --yes to apply changes without a prompt.\n');
+      declined = { code: EXIT.usage };
+      return false;
+    }
+    if (!(await ask('Apply these changes?'))) {
+      stdout('Cancelled; nothing changed.\n');
+      declined = { code: EXIT.failed };
+      return false;
+    }
+    return true;
+  };
+
+  let result: SetupResult;
   try {
-    result = await planned.apply();
+    result = await setup({ ...options, confirm });
   } catch (error) {
     return { code: fail(error, exitFor(error)) };
   }
+  if (result.cancelled) return declined!;
 
+  const { cancelled: _, ...applied } = result;
   if (flags.json) {
-    emit(result);
+    emit(applied);
   } else {
     stdout(`\n${renderStatus(result.status, sources)}`);
     if (result.manual.length)

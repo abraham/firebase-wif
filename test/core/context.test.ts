@@ -83,7 +83,7 @@ describe('resolveContext', () => {
       projectId: 'demo-project',
       repo: 'octo-org/site',
       sources: { projectId: '.firebaserc default', repo: 'git remote origin' },
-      firebaseJson: { hosting: { public: 'dist' } },
+      local: { firebaseJson: { hosting: { public: 'dist' } } },
       firebaseDir: root,
       gitRoot: root,
     });
