@@ -693,6 +693,33 @@ describe('setup', () => {
     expect(writes(fakes)).toEqual([]);
   });
 
+  it('lets any branch deploy when asked, keeping protection rules', async () => {
+    const fakes = createConfiguredFakes();
+    const repo = fakes.github.state.repos['octo-org/site']!;
+    repo.environments!.production!.waitTimer = 5;
+    const anyBranch = { environment: { name: 'production', branch: false as const } };
+
+    const report = await run(fakes, anyBranch);
+    expect(report.changes.map((c) => c.description)).toEqual(['allow any branch to deploy to production']);
+    expectConsistent(report);
+
+    const result = applied(await setupWith(fakes, anyBranch));
+    expect(repo.environments!.production).toMatchObject({ deployment_branch_policy: null, waitTimer: 5 });
+    expect(check(result.status, 'gh.environment')).toEqual({
+      id: 'gh.environment',
+      status: 'pass',
+      message: 'production allows any branch',
+    });
+
+    repo.environments = {};
+    expect((await run(fakes, anyBranch)).changes.map((c) => c.description)).toEqual([
+      'create environment production',
+      'allow any branch to deploy to production',
+    ]);
+    applied(await setupWith(fakes, anyBranch));
+    expect(repo.environments.production).toEqual({ deployment_branch_policy: null, branchPolicies: [] });
+  });
+
   it('preserves environment reviewers and wait timers', async () => {
     const fakes = createConfiguredFakes();
     fakes.github.state.repos['octo-org/site']!.environments = {

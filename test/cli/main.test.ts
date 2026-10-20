@@ -112,6 +112,9 @@ describe('firebase-wif status', () => {
     expect(report.context.presets).toEqual(['hosting', 'firestore']);
     expect(report.context.roles).toContain('roles/datastore.viewer');
     expect(report.context.provider).toMatch(/providers\/other-provider$/);
+
+    const anyBranch = JSON.parse((await cli(['--json', '--environment', 'test', '--any-branch'], fakes)).stdout);
+    expect(anyBranch.context.environment).toEqual({ name: 'test', branch: false });
   });
 
   it('reports usage errors with exit code 2', async () => {
@@ -119,6 +122,7 @@ describe('firebase-wif status', () => {
     expect((await cli(['--nope'], fakes)).code).toBe(2);
     expect((await cli(['deploy'], fakes)).code).toBe(2);
     expect((await cli(['status', '--yes'], fakes)).code).toBe(2);
+    expect((await cli(['--any-branch', '--branch', 'main'], fakes)).code).toBe(2);
     expect((await cli(['--preset', 'database'], fakes)).code).toBe(2);
     expect((await cli(['--role', 'owner'], fakes)).code).toBe(2);
     expect((await cli(['--help'], fakes)).code).toBe(0);

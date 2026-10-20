@@ -82,7 +82,7 @@ It runs in a container, so pass the credentials JSON instead of a file path:
   with:
     workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
     service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
-- uses: w9jds/firebase-action@v15
+- uses: w9jds/firebase-action@v15.34.0
   with:
     args: deploy --only hosting
   env:
@@ -126,6 +126,7 @@ Useful options (`--help` lists them all):
 - `--preset hosting|firestore|storage|functions` (repeatable) and `--role <role>`: the deploy roles. By default the presets come from the keys in `firebase.json`.
 - `--dry-run`, `--yes`: print the plan only, or apply without asking.
 - `--prune`: remove roles that are no longer requested from a service account firebase-wif created.
+- `--environment <name>`, `--any-branch`: the GitHub environment to create, and let any branch (and so pull requests) deploy to it instead of only the default branch.
 - `--adopt`: reuse a setup made by `setup-wif.sh` or hoverboard (`GCP_WIF_PROVIDER`/`GCP_DEPLOY_SA` or `WIF_PROVIDER`/`DEPLOY_SERVICE_ACCOUNT` variables).
 - `--all-aliases`: run for every project in `.firebaserc`. The first project holds the pool, provider, and service account; the others only get APIs and deploy roles.
 - `--json`: machine-readable output.

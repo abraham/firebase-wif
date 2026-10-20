@@ -49,8 +49,8 @@ export interface Options {
    * point at. When they're in another project, only that project's APIs and roles are reconciled.
    */
   home?: { provider: string; serviceAccount: string };
-  /** `branch` defaults to the repo's default branch. */
-  environment?: { name: string; branch?: string } | false;
+  /** `branch` defaults to the repo's default branch; `false` lets any branch deploy. */
+  environment?: { name: string; branch?: string | false } | false;
   prune?: boolean;
   /** Reuse a setup found through legacy repo variables (default `false`). A function decides per candidate. */
   adopt?: boolean | ((candidate: AdoptCandidate) => Promise<boolean>);
@@ -74,7 +74,7 @@ export interface Context {
   serviceAccount: string;
   homeProjectId: string;
   variables: { provider: string; serviceAccount: string } | false;
-  environment: { name: string; branch: string } | false;
+  environment: { name: string; branch: string | false } | false;
   presets: PresetName[];
   roles: string[];
   apis: string[];

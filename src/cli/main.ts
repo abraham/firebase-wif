@@ -30,6 +30,7 @@ Options:
   --environment <name>          GitHub environment (default: ${DEFAULT_ENVIRONMENT})
   --no-environment              Skip the GitHub environment
   --branch <name>               Branch allowed to deploy (default: the repo's default branch)
+  --any-branch                  Let any branch deploy to the environment
   --variable-prefix <prefix>    Repo variable prefix (default: ${DEFAULT_VARIABLE_PREFIX})
   --json                        Print JSON
   --cwd <dir>                   Directory to look for firebase.json and the git remote
@@ -109,6 +110,7 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
         'runtime-service-account': { type: 'string', multiple: true },
         environment: { type: 'string' },
         'no-environment': { type: 'boolean' },
+        'any-branch': { type: 'boolean' },
         branch: { type: 'string' },
         'variable-prefix': { type: 'string' },
         json: { type: 'boolean' },
@@ -138,6 +140,10 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
   const setupOnly = (['dry-run', 'yes', 'adopt', 'prune'] as const).filter((flag) => values[flag]);
   if (command === 'status' && setupOnly.length) {
     stderr(`--${setupOnly[0]} only works with setup.\n`);
+    return EXIT.usage;
+  }
+  if (values['any-branch'] && values.branch) {
+    stderr('Pass either --branch or --any-branch, not both.\n');
     return EXIT.usage;
   }
 
@@ -235,7 +241,7 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
         variables: { provider: `${prefix}PROVIDER`, serviceAccount: `${prefix}SERVICE_ACCOUNT` },
         environment: values['no-environment']
           ? false
-          : { name: values.environment ?? DEFAULT_ENVIRONMENT, branch: values.branch },
+          : { name: values.environment ?? DEFAULT_ENVIRONMENT, branch: values['any-branch'] ? false : values.branch },
         local: resolved.local,
         ...(home ? { home } : {}),
       };

@@ -518,7 +518,9 @@ const environment: Resource = {
     if (!env) return { kind: 'skipped', message: 'environment disabled' };
     const createAll = (manual: boolean) => [
       change(this.id, 'create', `create environment ${env.name}`, manual),
-      change(this.id, 'create', `allow only ${env.branch} to deploy to ${env.name}`, manual),
+      env.branch === false
+        ? change(this.id, 'set', `allow any branch to deploy to ${env.name}`, manual)
+        : change(this.id, 'create', `allow only ${env.branch} to deploy to ${env.name}`, manual),
     ];
     if (!rt.github) return { kind: 'skipped', message: 'no GitHub credentials', changes: createAll(true) };
 
@@ -527,6 +529,14 @@ const environment: Resource = {
     const current = await read(() => github.request<Environment>('GET', environmentPath(rt, env.name)));
     if (current.kind === 'skipped') return { kind: 'skipped', message: current.reason };
     if (current.kind === 'missing') return drift(createAll(manual), manual ? ADMIN_FIX : undefined);
+
+    if (env.branch === false) {
+      if (!current.value.deployment_branch_policy) return { kind: 'ok', message: `${env.name} allows any branch` };
+      return drift(
+        [change(this.id, 'set', `allow any branch to deploy to ${env.name}`, manual)],
+        manual ? ADMIN_FIX : undefined,
+      );
+    }
 
     const changes: Change[] = [];
     if (needsBranchPolicy(current.value)) {
@@ -547,9 +557,18 @@ const environment: Resource = {
     const path = environmentPath(rt, env.name);
     const current = await read(() => github.request<Environment>('GET', path));
     if (current.kind === 'skipped') return;
+    const protection = current.kind === 'found' ? currentProtection(current.value) : {};
+
+    if (env.branch === false) {
+      if (current.kind === 'missing' || current.value.deployment_branch_policy) {
+        await github.request('PUT', path, { ...protection, deployment_branch_policy: null });
+      }
+      return;
+    }
+
     if (current.kind === 'missing' || needsBranchPolicy(current.value)) {
       await github.request('PUT', path, {
-        ...(current.kind === 'found' ? currentProtection(current.value) : {}),
+        ...protection,
         deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
       });
     }
