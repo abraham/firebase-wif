@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { FirebaseWifError, HttpError, isFirebaseWifError, statusOf } from '../../src/core/errors.js';
+import {
+  FirebaseWifError,
+  HttpError,
+  isAbortError,
+  isFirebaseWifError,
+  statusOf,
+  WriteError,
+} from '../../src/core/errors.js';
 
 describe('FirebaseWifError', () => {
   it('carries a code, fix, and details', () => {
@@ -21,6 +28,30 @@ describe('FirebaseWifError', () => {
     const error = new FirebaseWifError('INVALID_NAME', 'Bad name.');
     expect(error.fix).toBeUndefined();
     expect(error.details).toBeUndefined();
+  });
+
+  it('requires details for codes that always have them', () => {
+    // @ts-expect-error APPLY_FAILED always carries its ApplyFailure details.
+    void new FirebaseWifError('APPLY_FAILED', 'Failed.');
+    // @ts-expect-error MISSING_PERMISSIONS always lists the permissions.
+    void new FirebaseWifError('MISSING_PERMISSIONS', 'Missing.', { fix: 'Ask.' });
+  });
+});
+
+describe('WriteError', () => {
+  it('carries the code and fix the engine wraps', () => {
+    const error = new WriteError('OPERATION_TIMEOUT', 'Timed out.', 'Re-run setup.');
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toMatchObject({ name: 'WriteError', code: 'OPERATION_TIMEOUT', fix: 'Re-run setup.' });
+  });
+});
+
+describe('isAbortError', () => {
+  it('matches only abort errors', () => {
+    expect(isAbortError(new DOMException('stop', 'AbortError'))).toBe(true);
+    expect(isAbortError(new DOMException('slow', 'TimeoutError'))).toBe(false);
+    expect(isAbortError({ name: 'AbortError' })).toBe(false);
+    expect(isAbortError(undefined)).toBe(false);
   });
 });
 

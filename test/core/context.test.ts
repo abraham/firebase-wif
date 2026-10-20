@@ -72,7 +72,7 @@ describe('resolveContext', () => {
       '.github/workflows/preview.yaml': 'on: pull_request\n',
       '.github/workflows/notes.md': 'not a workflow',
     });
-    const exec = vi.fn(async (file: string, args: string[], options?: { cwd?: string }) => {
+    const exec = vi.fn(async (file: string, args: string[], options?: { cwd?: string | undefined }) => {
       expect([file, ...args]).toEqual(['git', 'remote', 'get-url', 'origin']);
       expect(options?.cwd).toBe(join(root, '.github'));
       return 'git@github.com:octo-org/site.git\n';

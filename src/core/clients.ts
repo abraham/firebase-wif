@@ -4,7 +4,7 @@ import { FirebaseWifError, HttpError } from './errors.js';
 import type { GitHubAuth, GitHubClient, GoogleAuth, GoogleClient } from './types.js';
 
 type Fetch = typeof globalThis.fetch;
-export type Exec = (file: string, args: string[], options?: { cwd?: string }) => Promise<string>;
+export type Exec = (file: string, args: string[], options?: { cwd?: string | undefined }) => Promise<string>;
 
 const execFileAsync = promisify(execFile);
 export const defaultExec: Exec = async (file, args, options) =>
@@ -32,22 +32,26 @@ const errorMessage = (data: unknown, fallback: string): string => {
   return body?.message ?? fallback;
 };
 
+/** The content-type header and body for a JSON request, or neither for a request without a body. */
+const jsonBody = (body: unknown): { headers: Record<string, string>; init: { body?: string } } =>
+  body === undefined
+    ? { headers: {}, init: {} }
+    : { headers: { 'content-type': 'application/json' }, init: { body: JSON.stringify(body) } };
+
 export const createGoogleClient = ({
   getAccessToken,
   fetch = globalThis.fetch,
 }: {
   getAccessToken: () => Promise<string>;
-  fetch?: Fetch;
+  fetch?: Fetch | undefined;
 }): GoogleClient => ({
   async request<T>(method: string, url: string, body?: unknown): Promise<T> {
     const token = await getAccessToken();
+    const json = jsonBody(body);
     const response = await fetch(url, {
       method,
-      headers: {
-        authorization: `Bearer ${token}`,
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: { authorization: `Bearer ${token}`, ...json.headers },
+      ...json.init,
     });
     const data = await readJson(response);
     if (!response.ok) throw new HttpError(response.status, errorMessage(data, response.statusText));
@@ -59,10 +63,11 @@ export const createGitHubClient = ({
   token,
   fetch = globalThis.fetch,
 }: {
-  token?: string;
-  fetch?: Fetch;
+  token?: string | undefined;
+  fetch?: Fetch | undefined;
 } = {}): GitHubClient => ({
   async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const json = jsonBody(body);
     const response = await fetch(`${GITHUB_API}${path}`, {
       method,
       headers: {
@@ -70,9 +75,9 @@ export const createGitHubClient = ({
         'x-github-api-version': '2022-11-28',
         'user-agent': 'firebase-wif',
         ...(token ? { authorization: `Bearer ${token}` } : {}),
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...json.headers,
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      ...json.init,
     });
     const data = await readJson(response);
     if (!response.ok) throw new HttpError(response.status, errorMessage(data, response.statusText));
@@ -80,9 +85,9 @@ export const createGitHubClient = ({
   },
 });
 
-const isGoogleClient = (auth: GoogleAuth): auth is GoogleClient => typeof (auth as GoogleClient).request === 'function';
+const isGoogleClient = (auth: GoogleAuth): auth is GoogleClient => 'request' in auth;
 
-const isGitHubClient = (auth: GitHubAuth): auth is GitHubClient => typeof (auth as GitHubClient).request === 'function';
+const isGitHubClient = (auth: GitHubAuth): auth is GitHubClient => 'request' in auth;
 
 const tryExec = async (exec: Exec, file: string, args: string[]): Promise<string | undefined> => {
   try {
@@ -97,7 +102,11 @@ export const defaultGoogleClient = async ({
   env = process.env,
   exec = defaultExec,
   fetch,
-}: { env?: NodeJS.ProcessEnv; exec?: Exec; fetch?: Fetch } = {}): Promise<GoogleClient> => {
+}: {
+  env?: NodeJS.ProcessEnv | undefined;
+  exec?: Exec | undefined;
+  fetch?: Fetch | undefined;
+} = {}): Promise<GoogleClient> => {
   const envToken = env.GOOGLE_OAUTH_ACCESS_TOKEN;
   if (envToken) return createGoogleClient({ getAccessToken: async () => envToken, fetch });
 
@@ -150,7 +159,11 @@ export const defaultGitHubClient = async ({
   env = process.env,
   exec = defaultExec,
   fetch,
-}: { env?: NodeJS.ProcessEnv; exec?: Exec; fetch?: Fetch } = {}): Promise<GitHubClient> => {
+}: {
+  env?: NodeJS.ProcessEnv | undefined;
+  exec?: Exec | undefined;
+  fetch?: Fetch | undefined;
+} = {}): Promise<GitHubClient> => {
   const token = env.GH_TOKEN || env.GITHUB_TOKEN || (await tryExec(exec, 'gh', ['auth', 'token']));
   if (!token) {
     throw new FirebaseWifError('NO_GITHUB_CREDENTIALS', 'No GitHub credentials found.', {

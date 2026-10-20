@@ -5,20 +5,20 @@ import type { RecordedCall } from './fake-google.js';
 export interface FakeEnvironment {
   deployment_branch_policy: { protected_branches: boolean; custom_branch_policies: boolean } | null;
   branchPolicies: string[];
-  waitTimer?: number;
-  reviewers?: { type: 'User' | 'Team'; id: number }[];
-  preventSelfReview?: boolean;
+  waitTimer?: number | undefined;
+  reviewers?: { type: 'User' | 'Team'; id: number }[] | undefined;
+  preventSelfReview?: boolean | undefined;
 }
 
 export interface FakeRepo {
   id: number;
   owner: { id: number; login: string };
   default_branch: string;
-  permissions?: { admin?: boolean };
-  variables?: Record<string, string>;
-  secrets?: string[];
-  environments?: Record<string, FakeEnvironment>;
-  oidcSub?: { use_default: boolean; include_claim_keys?: string[] };
+  permissions?: { admin?: boolean | undefined } | undefined;
+  variables?: Record<string, string> | undefined;
+  secrets?: string[] | undefined;
+  environments?: Record<string, FakeEnvironment> | undefined;
+  oidcSub?: { use_default: boolean; include_claim_keys?: string[] | undefined } | undefined;
 }
 
 export interface FakeGitHubState {

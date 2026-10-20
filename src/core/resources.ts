@@ -1,4 +1,4 @@
-import { FirebaseWifError } from './errors.js';
+import { FirebaseWifError, WriteError } from './errors.js';
 import {
   desiredAttributeCondition,
   desiredAttributeMapping,
@@ -224,10 +224,10 @@ const createProvider = async (rt: Runtime, id: string): Promise<Operation> => {
     });
   } catch (error) {
     if (error instanceof Error && error.message.includes('constraints/iam.workloadIdentityPoolProviders')) {
-      throw new FirebaseWifError(
+      throw new WriteError(
         'ORG_POLICY_BLOCKS_ISSUER',
         "The organization policy constraints/iam.workloadIdentityPoolProviders doesn't allow GitHub Actions as an issuer.",
-        { fix: `Ask an organization policy admin to add ${ISSUER} to the constraint's allowed values.` },
+        `Ask an organization policy admin to add ${ISSUER} to the constraint's allowed values.`,
       );
     }
     throw error;

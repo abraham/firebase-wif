@@ -4,7 +4,7 @@ import type { Runtime } from '../../src/core/runtime.js';
 import { createConfiguredFakes } from '../../src/testing/index.js';
 import { runtimeFor } from '../helpers.js';
 
-const all: Advisory[] = [...LOCAL_CHECKS, ...Object.values(GCP_ADVISORIES), ...GITHUB_ADVISORIES];
+const all: Advisory[] = [...LOCAL_CHECKS, ...Object.values(GCP_ADVISORIES), ...Object.values(GITHUB_ADVISORIES)];
 const advisory = (id: string) => all.find((a) => a.id === id)!;
 const run = (id: string, rt: Runtime) => advisory(id).run(rt);
 

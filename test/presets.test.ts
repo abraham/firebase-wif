@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   apisFor,
   BASE_APIS,
+  isPresetName,
   PRESET_NAMES,
   PRESETS,
   resolvePresets,
@@ -29,6 +30,13 @@ describe('resolvePresets', () => {
     expect(resolvePresets({})).toEqual(['hosting']);
     expect(resolvePresets({ emulators: {} })).toEqual(['hosting']);
     expect(resolvePresets({ functions: {}, hosting: {}, emulators: {} })).toEqual(['hosting', 'functions']);
+  });
+});
+
+describe('isPresetName', () => {
+  it('accepts only preset names', () => {
+    expect(PRESET_NAMES.every(isPresetName)).toBe(true);
+    expect(isPresetName('database')).toBe(false);
   });
 });
 

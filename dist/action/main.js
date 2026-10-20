@@ -8,13 +8,12 @@ var FirebaseWifError = class extends Error {
   code;
   fix;
   details;
-  // Errors raised mid-apply get their `ApplyFailure` details when the engine wraps them.
-  constructor(code, message, options = {}) {
+  constructor(code, message, ...[options]) {
     super(message);
     this.name = "FirebaseWifError";
     this.code = code;
-    this.fix = options.fix;
-    this.details = options.details;
+    this.fix = options?.fix;
+    this.details = options?.details;
   }
 };
 
@@ -146,7 +145,10 @@ var impersonationError = (status, body, serviceAccount) => {
     STATUS_FIX
   );
 };
-var verifyCredentials = async (config, { signal, fetch = globalThis.fetch } = {}) => {
+var verifyCredentials = async (config, {
+  signal,
+  fetch = globalThis.fetch
+} = {}) => {
   const oidc = await send(
     fetch,
     "oidc",

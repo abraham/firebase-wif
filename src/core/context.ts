@@ -11,8 +11,8 @@ export interface ResolvedContext {
   /** Where each value came from, for display. */
   sources: { projectId: string; repo: string };
   /** Directory containing `firebase.json`/`.firebaserc`, if found. */
-  firebaseDir?: string;
-  gitRoot?: string;
+  firebaseDir?: string | undefined;
+  gitRoot?: string | undefined;
 }
 
 const exists = async (path: string): Promise<boolean> => {
@@ -101,7 +101,9 @@ export interface ProjectAlias {
 }
 
 /** Each project in `.firebaserc` once, under its first alias, with `default` first. */
-export const projectAliases = async ({ cwd = process.cwd() }: { cwd?: string } = {}): Promise<ProjectAlias[]> => {
+export const projectAliases = async ({ cwd = process.cwd() }: { cwd?: string | undefined } = {}): Promise<
+  ProjectAlias[]
+> => {
   const { firebaserc } = await findFirebaseFiles(resolve(cwd));
   const projects = firebaserc?.projects ?? {};
   const names = Object.keys(projects).sort((a, b) => Number(b === 'default') - Number(a === 'default'));
@@ -143,11 +145,11 @@ export const resolveContext = async ({
   env = process.env,
   exec = defaultExec,
 }: {
-  cwd?: string;
-  project?: string;
-  repo?: string;
-  env?: NodeJS.ProcessEnv;
-  exec?: Exec;
+  cwd?: string | undefined;
+  project?: string | undefined;
+  repo?: string | undefined;
+  env?: NodeJS.ProcessEnv | undefined;
+  exec?: Exec | undefined;
 } = {}): Promise<ResolvedContext> => {
   const start = resolve(cwd);
   const { gitRoot, firebaseDir, firebaseJson, firebaserc } = await findFirebaseFiles(start);

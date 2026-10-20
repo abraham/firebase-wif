@@ -6,7 +6,8 @@ import { runtimeFor } from '../helpers.js';
 
 const resource = (id: string): Resource => RESOURCES.find((r) => r.id === id)!;
 
-const evaluate = async (id: string, fakes: ConfiguredFakes, rt: Runtime) => resource(id).evaluate(rt);
+// `_fakes` keeps call sites readable: each test evaluates against the fakes it just changed.
+const evaluate = async (id: string, _fakes: ConfiguredFakes, rt: Runtime) => resource(id).evaluate(rt);
 
 const actions = (outcome: Awaited<ReturnType<Resource['evaluate']>>) =>
   outcome.kind === 'drift' ? outcome.changes.map((c) => `${c.action}: ${c.description}`) : outcome.kind;

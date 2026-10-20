@@ -1,4 +1,4 @@
-import { statusOf } from './errors.js';
+import { isAbortError, statusOf } from './errors.js';
 import type { Policy } from './policy.js';
 import type { Context, GitHubClient, GoogleClient, LocalFiles, Preflight } from './types.js';
 
@@ -37,8 +37,8 @@ export interface Runtime {
   ctx: Context;
   google: GoogleClient;
   /** `undefined` when GitHub is skipped. */
-  github?: GitHubClient;
-  local?: LocalFiles;
+  github?: GitHubClient | undefined;
+  local?: LocalFiles | undefined;
   repo: RepoResource;
   preflight: Preflight;
   variableValues: Map<string, Read<string>>;
@@ -60,7 +60,7 @@ export const read = async <T>(load: () => Promise<T>): Promise<Read<T>> => {
   try {
     return { kind: 'found', value: await load() };
   } catch (error) {
-    if ((error as Error | undefined)?.name === 'AbortError') throw error;
+    if (isAbortError(error)) throw error;
     if (statusOf(error) === 404) return { kind: 'missing' };
     return { kind: 'skipped', reason: describe(error) };
   }

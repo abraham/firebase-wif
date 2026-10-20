@@ -31,7 +31,7 @@ export const estimateSub = (
     repoId: number;
     ownerId: number;
     branch: string;
-    environment?: string;
+    environment?: string | undefined;
   },
 ): SubEstimate => {
   const contexts = [`ref:refs/heads/${branch}`, 'pull_request', ...(environment ? [`environment:${environment}`] : [])];

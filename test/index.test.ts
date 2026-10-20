@@ -191,6 +191,7 @@ describe('exports', () => {
       'PRESET_NAMES',
       'SERVICE_ACCOUNT_USER_ROLE',
       'apisFor',
+      'isPresetName',
       'resolvePresets',
       'rolesFor',
     ]);

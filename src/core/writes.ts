@@ -1,4 +1,4 @@
-import { FirebaseWifError, statusOf } from './errors.js';
+import { isAbortError, statusOf, WriteError } from './errors.js';
 import type { Policy } from './policy.js';
 import type { GoogleClient, ProgressEvent } from './types.js';
 
@@ -6,7 +6,7 @@ import type { GoogleClient, ProgressEvent } from './types.js';
 export interface Writer {
   sleep(ms: number): Promise<void>;
   emit(event: ProgressEvent): void;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   /** IAM is eventually consistent for service accounts created in this run. */
   createdServiceAccount: boolean;
 }
@@ -40,9 +40,11 @@ export const waitForOperation = async (
   let current = operation;
   for (let attempt = 1; !current.done; attempt++) {
     if (attempt > POLL_ATTEMPTS || !current.name) {
-      throw new FirebaseWifError('OPERATION_TIMEOUT', `Timed out waiting to ${label}.`, {
-        fix: 'Re-run firebase-wif setup; it picks up where it stopped.',
-      });
+      throw new WriteError(
+        'OPERATION_TIMEOUT',
+        `Timed out waiting to ${label}.`,
+        'Re-run firebase-wif setup; it picks up where it stopped.',
+      );
     }
     w.emit({ type: 'operation:wait', name: label, attempt });
     await pause(w, POLL_INTERVAL_MS);
@@ -62,7 +64,7 @@ export const retry = async <T>(
     try {
       return await run();
     } catch (error) {
-      if ((error as Error | undefined)?.name === 'AbortError') throw error;
+      if (isAbortError(error)) throw error;
       const delayMs = attempt <= MAX_RETRIES ? delayFor(error, attempt) : undefined;
       if (delayMs === undefined) throw error;
       w.emit({ type: 'retry', reason, attempt, delayMs });

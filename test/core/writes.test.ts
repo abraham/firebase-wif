@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FirebaseWifError, HttpError } from '../../src/core/errors.js';
+import { HttpError } from '../../src/core/errors.js';
 import type { ProgressEvent } from '../../src/core/types.js';
 import {
   defaultSleep,
@@ -73,7 +73,10 @@ describe('waitForOperation', () => {
       message: 'Timed out waiting to do it.',
     });
     expect(polls).toBe(POLL_ATTEMPTS);
-    await expect(waitForOperation(w, pending, 'https://x.test', {}, 'do it')).rejects.toBeInstanceOf(FirebaseWifError);
+    await expect(waitForOperation(w, pending, 'https://x.test', {}, 'do it')).rejects.toMatchObject({
+      name: 'WriteError',
+      code: 'OPERATION_TIMEOUT',
+    });
   });
 
   it('stops when the signal aborts', async () => {

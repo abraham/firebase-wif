@@ -243,11 +243,16 @@ const workflows: Advisory = {
 };
 
 export const LOCAL_CHECKS: readonly Advisory[] = [firebaseJson, projectMatch, credsIgnored];
-export const GCP_ADVISORIES: Readonly<Record<string, Advisory>> = {
+export const GCP_ADVISORIES = {
   project,
   operator,
   serviceAccountKeys,
   extraRoles,
   broadImpersonation,
-};
-export const GITHUB_ADVISORIES: readonly Advisory[] = [repo, legacySecrets, oidcSub, workflows];
+} as const satisfies Record<string, Advisory>;
+export const GITHUB_ADVISORIES = {
+  repo,
+  legacySecrets,
+  oidcSub,
+  workflows,
+} as const satisfies Record<string, Advisory>;

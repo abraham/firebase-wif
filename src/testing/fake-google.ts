@@ -11,29 +11,29 @@ export interface FakeProject {
   enabledServices: string[];
   iamPolicy: Policy;
   /** What `testIamPermissions` grants the caller; every requested permission when omitted. */
-  grantedPermissions?: string[];
+  grantedPermissions?: string[] | undefined;
 }
 
 export interface FakePool {
-  state?: 'ACTIVE' | 'DELETED';
-  disabled?: boolean;
-  displayName?: string;
-  description?: string;
+  state?: 'ACTIVE' | 'DELETED' | undefined;
+  disabled?: boolean | undefined;
+  displayName?: string | undefined;
+  description?: string | undefined;
 }
 
 export interface FakeProvider extends FakePool {
-  attributeMapping?: Record<string, string>;
-  attributeCondition?: string;
-  oidc?: { issuerUri?: string; allowedAudiences?: string[] };
+  attributeMapping?: Record<string, string> | undefined;
+  attributeCondition?: string | undefined;
+  oidc?: { issuerUri?: string | undefined; allowedAudiences?: string[] | undefined } | undefined;
 }
 
 export interface FakeServiceAccount {
   projectId: string;
-  disabled?: boolean;
-  displayName?: string;
-  description?: string;
-  keys?: string[];
-  iamPolicy?: Policy;
+  disabled?: boolean | undefined;
+  displayName?: string | undefined;
+  description?: string | undefined;
+  keys?: string[] | undefined;
+  iamPolicy?: Policy | undefined;
 }
 
 export interface FakeGoogleState {
@@ -51,17 +51,17 @@ export interface FakeGoogleState {
   /** How many times a new long-running operation answers `done: false` before it's done. */
   pendingPolls: number;
   /** Simulates the `constraints/iam.workloadIdentityPoolProviders` org policy when set. */
-  allowedIssuers?: string[];
+  allowedIssuers?: string[] | undefined;
 }
 
 export interface FakeFailure {
   /** Matches requests whose URL contains this. */
   url: string;
-  method?: string;
+  method?: string | undefined;
   status: number;
-  message?: string;
+  message?: string | undefined;
   /** Default 1. */
-  times?: number;
+  times?: number | undefined;
 }
 
 export interface RecordedCall {

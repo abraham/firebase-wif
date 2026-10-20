@@ -30,7 +30,7 @@ export interface CredentialsInput {
   provider: string;
   serviceAccount: string;
   /** Audience for the GitHub OIDC token; defaults to `https://iam.googleapis.com/<provider>`. */
-  audience?: string;
+  audience?: string | undefined;
   /** `ACTIONS_ID_TOKEN_REQUEST_URL` */
   requestUrl: string;
   /** `ACTIONS_ID_TOKEN_REQUEST_TOKEN` */
@@ -173,7 +173,10 @@ const impersonationError = (status: number, body: Record<string, unknown>, servi
  */
 export const verifyCredentials = async (
   config: ExternalAccountConfig,
-  { signal, fetch = globalThis.fetch }: { signal?: AbortSignal; fetch?: typeof globalThis.fetch } = {},
+  {
+    signal,
+    fetch = globalThis.fetch,
+  }: { signal?: AbortSignal | undefined; fetch?: typeof globalThis.fetch | undefined } = {},
 ): Promise<void> => {
   const oidc = await send(
     fetch,

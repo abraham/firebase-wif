@@ -1,7 +1,7 @@
 import { findAdoptCandidate } from './adopt.js';
 import { createGitHubClient, toGitHubClient, toGoogleClient } from './clients.js';
 import { GCP_ADVISORIES, GITHUB_ADVISORIES, LOCAL_CHECKS, type Advisory } from './checks.js';
-import { FirebaseWifError, statusOf } from './errors.js';
+import { FirebaseWifError, isAbortError, isFirebaseWifError, statusOf, WriteError } from './errors.js';
 import {
   DEFAULT_ENVIRONMENT,
   DEFAULT_POOL,
@@ -76,7 +76,7 @@ const withSignal = <C extends GoogleClient | GitHubClient>(client: C, signal: Ab
     : client;
 
 const rethrowAbort = (error: unknown) => {
-  if ((error as Error | undefined)?.name === 'AbortError') throw error;
+  if (isAbortError(error)) throw error;
 };
 
 const fetchRepo = async (client: GitHubClient, repo: string, authenticated: boolean): Promise<RepoResource> => {
@@ -160,7 +160,7 @@ const linkedChain = (
   variables: Context['variables'],
   values: Map<string, Read<string>>,
   adopted: AdoptCandidate | undefined,
-): { provider?: string; serviceAccount?: string } => {
+): { provider?: string | undefined; serviceAccount?: string | undefined } => {
   if (options.home) {
     if (!parseProviderName(options.home.provider)) {
       throw new FirebaseWifError(
@@ -296,23 +296,25 @@ const entries = (ctx: Context): Entry[] => {
   const advisory = (value: Advisory): Entry => ({ advisory: value });
   return [
     ...LOCAL_CHECKS.map(advisory),
-    advisory(GCP_ADVISORIES.project!),
-    advisory(GCP_ADVISORIES.operator!),
+    advisory(GCP_ADVISORIES.project),
+    advisory(GCP_ADVISORIES.operator),
     resource('gcp.apis'),
     resource('gcp.pool'),
     resource('gcp.provider'),
     resource('gcp.provider-condition'),
     resource('gcp.service-account'),
-    advisory(GCP_ADVISORIES.serviceAccountKeys!),
+    advisory(GCP_ADVISORIES.serviceAccountKeys),
     resource('gcp.project-roles'),
-    advisory(GCP_ADVISORIES.extraRoles!),
+    advisory(GCP_ADVISORIES.extraRoles),
     resource('gcp.wi-user'),
-    advisory(GCP_ADVISORIES.broadImpersonation!),
+    advisory(GCP_ADVISORIES.broadImpersonation),
     ...(ctx.runtimeServiceAccounts.length ? [resource('gcp.runtime-sa-user')] : []),
-    advisory(GITHUB_ADVISORIES[0]!),
+    advisory(GITHUB_ADVISORIES.repo),
     resource('gh.variables'),
     resource('gh.environment'),
-    ...GITHUB_ADVISORIES.slice(1).map(advisory),
+    advisory(GITHUB_ADVISORIES.legacySecrets),
+    advisory(GITHUB_ADVISORIES.oidcSub),
+    advisory(GITHUB_ADVISORIES.workflows),
   ];
 };
 
@@ -429,11 +431,12 @@ export const assertCanApply = (changes: Change[], preflight: Preflight) => {
 };
 
 const applyError = (error: unknown, failed: Change, applied: Change[]): unknown => {
-  if ((error as Error | undefined)?.name === 'AbortError') return error;
+  if (isAbortError(error)) return error;
   const done = applied.length ? ` Already applied: ${applied.map((c) => c.description).join('; ')}.` : '';
   const details = { failed, applied: [...applied] };
-  if (error instanceof FirebaseWifError)
+  if (error instanceof WriteError || isFirebaseWifError(error, 'PROVIDER_OWNED_BY_OTHER_REPO'))
     return new FirebaseWifError(error.code, `${error.message}${done}`, { fix: error.fix, details });
+  if (error instanceof FirebaseWifError) return error;
   const status = statusOf(error);
   const reason = error instanceof Error ? error.message.slice(0, 200) : 'unknown error';
   return new FirebaseWifError(

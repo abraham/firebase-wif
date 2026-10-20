@@ -17,10 +17,9 @@ import {
   type GoogleClient,
   type Options,
   type Plan,
-  type PresetName,
   type SetupResult,
 } from '../index.js';
-import { PRESET_NAMES } from '../presets.js';
+import { isPresetName, PRESET_NAMES } from '../presets.js';
 import { renderPlan, renderStatus, type Sources } from './render.js';
 
 export const USAGE = `Usage: firebase-wif [status|setup] [options]
@@ -153,7 +152,7 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
   try {
     parsed = parseArgs({ args: argv, allowPositionals: true, options: OPTIONS });
   } catch (error) {
-    stderr(`${(error as Error).message}\n\n${USAGE}`);
+    stderr(`${error instanceof Error ? error.message : String(error)}\n\n${USAGE}`);
     return EXIT.usage;
   }
   const { values, positionals } = parsed;
@@ -196,12 +195,13 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
     return code;
   };
 
-  const unknownPreset = values.preset?.find((name) => !PRESET_NAMES.includes(name as PresetName));
-  if (unknownPreset) {
+  const presets = values.preset ?? [];
+  const unknownPreset = presets.find((name) => !isPresetName(name));
+  if (unknownPreset !== undefined) {
     stderr(`Unknown preset "${unknownPreset}". Use one of: ${PRESET_NAMES.join(', ')}.\n`);
     return EXIT.usage;
   }
-  const presets = values.preset as PresetName[] | undefined;
+  const knownPresets = presets.filter(isPresetName);
   const cwd = values.cwd ?? deps.cwd;
 
   const run = async (): Promise<number> => {
@@ -267,7 +267,7 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
         repo: resolved.repo,
         google,
         github,
-        presets: presets?.length ? presets : 'auto',
+        presets: knownPresets.length ? knownPresets : 'auto',
         roles: values.role,
         runtimeServiceAccounts: values['runtime-service-account'],
         names: { pool: values.pool, provider: values.provider, serviceAccount: values['service-account'] },

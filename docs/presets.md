@@ -28,7 +28,7 @@ With `presets: 'auto'`, the default, presets come from the top-level keys of `fi
 
 Any other role goes through `roles` (`--role`), on top of the presets. For example, scheduled functions also need `--role roles/cloudscheduler.admin`, and products without a preset (Realtime Database, Remote Config, Extensions, App Hosting) are covered by their roles.
 
-`rolesFor({ presets, roles })` returns the presets' roles plus the extra roles, deduplicated and sorted. `apisFor(presets)` returns `BASE_APIS` plus the presets' APIs, deduplicated and sorted.
+`rolesFor({ presets, roles })` returns the presets' roles plus the extra roles, deduplicated and sorted. `apisFor(presets)` returns `BASE_APIS` plus the presets' APIs, deduplicated and sorted. Both accept readonly arrays. `isPresetName(name)` is a type guard for validating user input.
 
 ## Functions runtime service accounts
 

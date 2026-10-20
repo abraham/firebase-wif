@@ -1,18 +1,5 @@
 import type { Change } from './types.js';
 
-export type ErrorCode =
-  | 'NO_GOOGLE_CREDENTIALS'
-  | 'NO_GITHUB_CREDENTIALS'
-  | 'INVALID_NAME'
-  | 'PROJECT_NOT_FOUND'
-  | 'REPO_NOT_FOUND'
-  | 'MISSING_PERMISSIONS'
-  | 'PROVIDER_OWNED_BY_OTHER_REPO'
-  | 'ORG_POLICY_BLOCKS_ISSUER'
-  | 'OPERATION_TIMEOUT'
-  | 'APPLY_FAILED'
-  | 'VERIFY_FAILED';
-
 /** The change that failed while applying, and every change applied before it. */
 export interface ApplyFailure {
   failed: Change;
@@ -33,18 +20,25 @@ export interface ErrorDetails {
   VERIFY_FAILED: { stage: 'oidc' | 'sts' | 'impersonation'; status: number };
 }
 
+export type ErrorCode = keyof ErrorDetails;
+
+/** `details` is required exactly when the code's details can't be `undefined`. */
+type ErrorOptions<C extends ErrorCode> = undefined extends ErrorDetails[C]
+  ? [options?: { fix?: string | undefined; details?: ErrorDetails[C] }]
+  : [options: { fix?: string | undefined; details: ErrorDetails[C] }];
+
 export class FirebaseWifError<C extends ErrorCode = ErrorCode> extends Error {
   readonly code: C;
-  readonly fix?: string;
+  readonly fix: string | undefined;
   readonly details: ErrorDetails[C];
 
-  // Errors raised mid-apply get their `ApplyFailure` details when the engine wraps them.
-  constructor(code: C, message: string, options: { fix?: string; details?: ErrorDetails[C] } = {}) {
+  constructor(code: C, message: string, ...[options]: ErrorOptions<C>) {
     super(message);
     this.name = 'FirebaseWifError';
     this.code = code;
-    this.fix = options.fix;
-    this.details = options.details as ErrorDetails[C];
+    this.fix = options?.fix;
+    // ErrorOptions guarantees this for every concrete code; TypeScript can't follow it through the generic.
+    this.details = options?.details as ErrorDetails[C];
   }
 }
 
@@ -65,6 +59,21 @@ export class HttpError extends Error {
     this.status = status;
   }
 }
+
+/** Thrown by a write that stops `apply`; the engine turns it into a `FirebaseWifError` with `ApplyFailure` details. */
+export class WriteError extends Error {
+  readonly code: 'ORG_POLICY_BLOCKS_ISSUER' | 'OPERATION_TIMEOUT';
+  readonly fix: string;
+
+  constructor(code: WriteError['code'], message: string, fix: string) {
+    super(message);
+    this.name = 'WriteError';
+    this.code = code;
+    this.fix = fix;
+  }
+}
+
+export const isAbortError = (error: unknown): boolean => error instanceof Error && error.name === 'AbortError';
 
 export const statusOf = (error: unknown): number | undefined => {
   const status = (error as { status?: unknown } | null | undefined)?.status;
