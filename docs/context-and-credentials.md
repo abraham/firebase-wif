@@ -1,7 +1,7 @@
 # Context and credentials
 
-Code: `src/core/context.ts`, `src/core/clients.ts`, `src/core/engine.ts`, `src/gh.ts`
-Tests: `test/core/context.test.ts`, `test/core/clients.test.ts`, `test/gh.test.ts`, `test/core/engine.test.ts`
+Code: `src/core/discovery/`, `src/core/engine/permissions.ts`, `src/gh.ts`
+Tests: `test/core/discovery/`, `test/gh.test.ts`, `test/core/engine/permissions.test.ts`, `test/core/engine/engine.test.ts`
 
 Before it can check or change anything, firebase-wif needs to know which project and repository to work on, and needs credentials for Google Cloud and GitHub. Discovery and credential lookup are the only places firebase-wif reads the filesystem, the environment, or runs other commands, and the library only does them when asked (see `node-api.md`).
 
@@ -106,7 +106,7 @@ To run `status`, the caller needs read access: the project's IAM policy, the poo
 
 ## How it's tested
 
-- `test/core/context.test.ts` uses temporary directories to cover the search for the git root and Firebase directory, every project and repository source in order, alias resolution, remote formats, other hosts, invalid JSON, the files read into `LocalFiles`, and alias listing.
-- `test/core/clients.test.ts` covers both credential lookups in order, gcloud token refresh, Application Default Credentials (with `google-auth-library` mocked), the clients' requests and headers, and error mapping.
+- `test/core/discovery/context.test.ts` and `files.test.ts` use temporary directories to cover the search for the git root and Firebase directory, every project and repository source in order, alias resolution, remote formats, other hosts, invalid JSON, the files read into `LocalFiles`, and alias listing.
+- `test/core/discovery/clients.test.ts` covers both credential lookups in order, gcloud token refresh, Application Default Credentials (with `google-auth-library` mocked), the clients' requests and headers, and error mapping.
 - `test/gh.test.ts` covers `ghCliClient` with a fake process runner.
-- `test/core/engine.test.ts` covers the repository and project lookups, the preflight for home and cross-project runs, and `apply` refusing to write with missing permissions.
+- `test/core/engine/permissions.test.ts` and `engine.test.ts` cover the repository and project lookups, the preflight for home and cross-project runs, and `apply` refusing to write with missing permissions.

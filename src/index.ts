@@ -1,8 +1,14 @@
-export { status, plan, setup, CROSS_PROJECT_PERMISSIONS, SETUP_PERMISSIONS } from './core/engine.js';
-export { resolveContext, parseGitHubRemote, projectAliases } from './core/context.js';
-export type { ProjectAlias, ResolvedContext } from './core/context.js';
-export { createGitHubClient, createGoogleClient, defaultGitHubClient, defaultGoogleClient } from './core/clients.js';
-export type { Exec } from './core/clients.js';
+export { status, plan, setup } from './core/engine/engine.js';
+export { CROSS_PROJECT_PERMISSIONS, SETUP_PERMISSIONS } from './core/engine/permissions.js';
+export { resolveContext, parseGitHubRemote, projectAliases } from './core/discovery/context.js';
+export type { ProjectAlias, ResolvedContext } from './core/discovery/context.js';
+export {
+  createGitHubClient,
+  createGoogleClient,
+  defaultGitHubClient,
+  defaultGoogleClient,
+} from './core/discovery/clients.js';
+export type { Exec } from './core/discovery/exec.js';
 export { DEFAULTS } from './core/naming.js';
 export { FirebaseWifError, HttpError, isFirebaseWifError } from './core/errors.js';
 export type { ErrorCode, ErrorDetails } from './core/errors.js';

@@ -1,7 +1,7 @@
 # Presets
 
-Code: `src/presets.ts`, `src/core/engine.ts`
-Tests: `test/presets.test.ts`, `test/core/engine.test.ts`
+Code: `src/presets.ts`, `src/core/engine/chain.ts`
+Tests: `test/presets.test.ts`, `test/core/engine/engine.test.ts`
 
 A preset is the set of project roles and APIs the deploy service account needs to deploy one Firebase product. Presets keep a Hosting-only repository at a single role and add only what each product's deploy needs.
 
@@ -50,4 +50,4 @@ Preset names are public API. Changing a preset's roles or APIs isn't a breaking 
 ## How it's tested
 
 - `test/presets.test.ts` checks every preset has roles and well-formed API names, that no preset grants `roles/iam.serviceAccountUser`, preset resolution from `firebase.json`, that Hosting stays at one role, and deduplication and sorting.
-- `test/core/engine.test.ts` checks the resolved roles and APIs in a run, and the runtime service account grant for the `functions` preset.
+- `test/core/engine/engine.test.ts` checks the resolved roles and APIs in a run, and the runtime service account grant for the `functions` preset.

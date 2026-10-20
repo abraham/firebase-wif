@@ -1,7 +1,7 @@
 # Checks
 
-Code: `src/core/checks.ts`, `src/core/resources.ts`, `src/core/workflows.ts`, `src/core/oidc.ts`
-Tests: `test/core/checks.test.ts`, `test/core/workflows.test.ts`, `test/core/oidc.test.ts`, `test/core/engine.test.ts`
+Code: `src/core/checks/`, `src/core/resources/`, `src/core/engine/catalog.ts`
+Tests: `test/core/checks/`, `test/core/engine/catalog.test.ts`, `test/core/engine/engine.test.ts`
 
 `status` reports one check per line. Each has a stable ID, a status (`pass`, `warn`, `fail`, or `skipped`), a one-line message, and, when it didn't pass, a fix: usually `firebase-wif setup`, or the exact command or change to make.
 
@@ -90,7 +90,7 @@ Check IDs, which checks are reconcile checks, and their severities are public AP
 
 ## How it's tested
 
-- `test/core/checks.test.ts` runs each advisory check against the `/testing` fakes in passing, warning, and skipped states.
-- `test/core/workflows.test.ts` covers deploy detection, each workflow problem, credential files in the workspace, and invalid YAML.
-- `test/core/oidc.test.ts` covers the `sub` estimate for the default and customized templates, in bytes rather than characters.
-- `test/core/engine.test.ts` checks the report order, that reconcile checks fail exactly when the plan has changes, and the skipped reasons.
+- `test/core/checks/local.test.ts`, `gcp.test.ts`, and `github.test.ts` run each advisory check against the `/testing` fakes in passing, warning, and skipped states.
+- `test/core/checks/workflows.test.ts` covers deploy detection, each workflow problem, credential files in the workspace, and invalid YAML.
+- `test/core/checks/oidc.test.ts` covers the `sub` estimate for the default and customized templates, in bytes rather than characters.
+- `test/core/engine/catalog.test.ts` checks the report order; `test/core/engine/engine.test.ts` checks that reconcile checks fail exactly when the plan has changes, and the skipped reasons.

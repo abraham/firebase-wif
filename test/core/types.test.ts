@@ -1,5 +1,5 @@
 import { describe, expectTypeOf, it } from 'vitest';
-import type { ResolvedContext } from '../../src/core/context.js';
+import type { ResolvedContext } from '../../src/core/discovery/context.js';
 import { isFirebaseWifError, type ApplyFailure } from '../../src/core/errors.js';
 import type {
   Change,

@@ -1,7 +1,7 @@
 # Reconcile
 
-Code: `src/core/engine.ts`, `src/core/resources.ts`, `src/core/runtime.ts`, `src/core/writes.ts`, `src/core/adopt.ts`
-Tests: `test/core/engine.test.ts`, `test/core/resources.test.ts`, `test/core/runtime.test.ts`, `test/core/writes.test.ts`, `test/core/adopt.test.ts`
+Code: `src/core/engine/`, `src/core/resources/`, `src/core/io/`
+Tests: `test/core/engine/`, `test/core/resources/`, `test/core/io/`
 
 `status`, `plan`, and `setup` share one engine. Each piece of the trust chain (see `trust-chain.md`) is a reconcile resource with two halves: `evaluate` reads the current state and returns the changes needed, and `apply` makes them. `status` runs only `evaluate`, and reports a resource with changes as a failed (or warning) check; `setup` runs `evaluate` and then `apply`. Because both use the same `evaluate`, `status` can't pass while `setup` still has work to do, and `setup` can't skip something `status` complains about.
 
@@ -122,8 +122,8 @@ Adopting reuses the provider and service account, writes the expected variables 
 
 ## How it's tested
 
-- `test/core/engine.test.ts` runs `status`, `plan`, and `setup` against the `/testing` fakes with a no-op `sleep`. It covers each resource from missing, soft-deleted, disabled, drifted, correct, and unreadable states; that applying twice leaves an empty second plan; that `status` fails exactly when the plan has changes; retries for conflicts and for a just-created service account; operation polling and timeout; abort; partial failure; the organization policy error; prune on managed and unmanaged accounts; adoption; manual changes without GitHub access or admin; and environment protection rules being kept.
-- `test/core/resources.test.ts` evaluates each resource directly in each of its states.
-- `test/core/writes.test.ts` covers polling, retry limits and delays, and policy read-modify-write.
-- `test/core/runtime.test.ts` covers reads, shared reads, and the IAM-blocked state.
-- `test/core/adopt.test.ts` covers finding a legacy pair.
+- `test/core/engine/engine.test.ts` runs `status`, `plan`, and `setup` against the `/testing` fakes with a no-op `sleep`. It covers each resource from missing, soft-deleted, disabled, drifted, correct, and unreadable states; that applying twice leaves an empty second plan; that `status` fails exactly when the plan has changes; retries for conflicts and for a just-created service account; operation polling and timeout; abort; partial failure; the organization policy error; prune on managed and unmanaged accounts; adoption; manual changes without GitHub access or admin; and environment protection rules being kept.
+- `test/core/resources/` evaluates each resource directly in each of its states, one test file per resource.
+- `test/core/io/writes.test.ts` covers polling, retry limits and delays, and policy read-modify-write.
+- `test/core/io/reads.test.ts` and `google-reads.test.ts` cover reads, shared reads, and the IAM-blocked state.
+- `test/core/engine/adopt.test.ts` covers finding a legacy pair; `apply.test.ts`, `inspect.test.ts`, and `permissions.test.ts` cover the engine's parts directly.

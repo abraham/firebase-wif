@@ -63,22 +63,19 @@ src/
   presets.ts               public: role and API presets
   gh.ts                    public: GitHub client that goes through the gh CLI
   testing/                 public: in-memory Google and GitHub fakes, configured scenarios
-  cli/                     argument parsing, rendering, prompts, bin entry point
+  cli/                     argument parsing, options, output, prompts, status and setup runs, bin entry point
   action/                  Action main and post steps, and a minimal @actions/core replacement
-  core/                    private
-    engine.ts              status, plan, apply, setup; builds the context and runs resources and checks
-    resources.ts           reconcile resources: evaluate (diff) and apply, in setup order
-    checks.ts              advisory checks that have no setup step
-    runtime.ts             per-run state, memoized reads, shared read helpers
-    writes.ts              long-running operation polling, retries, IAM policy read-modify-write
-    context.ts             discovery from .firebaserc, firebase.json, workflows, and the git remote
-    clients.ts             fetch-based Google and GitHub clients and the credential lookup order
-    naming.ts              default names and validation
-    policy.ts              IAM policy helpers and provider condition analysis
-    adopt.ts               finding legacy setups to adopt
-    workflows.ts           workflow file analysis
-    oidc.ts                OIDC sub claim length estimate
-    errors.ts, types.ts    FirebaseWifError, HttpError, and public types
+  core/                    private; layers only import downward (test/structure.test.ts)
+    types.ts, errors.ts    public types, FirebaseWifError, HttpError
+    naming.ts, policy.ts   default names and validation; IAM policy helpers and condition analysis
+    discovery/             the only code that reads files, the environment, or runs commands:
+                           context and alias discovery, file readers, exec, fetch clients and credential lookup
+    io/                    per-run state and memoized reads, Google reads, endpoints, polling, retries,
+                           IAM policy read-modify-write
+    resources/             one file per reconcile resource (evaluate and apply), and the registry in setup order
+    checks/                advisory checks (local, Google Cloud, GitHub), workflow analysis, sub estimate
+    engine/                status, plan, setup; inspect, apply, permissions, trust-chain naming, adoption,
+                           and the catalog of every check in report order
 test/                      mirrors src/; every source file has a matching test file
 ```
 
@@ -111,8 +108,8 @@ Each spec starts with the files it covers, so it's easy to see when a change nee
 ```md
 # Checks
 
-Code: `src/core/checks.ts`, `src/core/workflows.ts`, `src/core/oidc.ts`
-Tests: `test/core/checks.test.ts`, `test/core/workflows.test.ts`, `test/core/oidc.test.ts`
+Code: `src/core/checks/`, `src/core/engine/catalog.ts`
+Tests: `test/core/checks/`, `test/core/engine/catalog.test.ts`
 ```
 
 Then it describes the ideal behavior as settled decisions, not open questions or a roadmap. Each spec ends with "Security" (what the feature must never do) and "How it's tested" sections. Open questions go in issues, not specs.

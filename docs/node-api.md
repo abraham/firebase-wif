@@ -280,5 +280,5 @@ These are additions, not breaking changes, and may come in a minor release: new 
 - `test/structure.test.ts` checks that `src/cli/` imports only from the public entry points, and `src/action/` only from `/credentials`.
 - `test/core/types.test.ts` checks the public types with `expectTypeOf`: that existing clients and token shorthands are accepted, which `Options` fields are required, that `resolveContext`'s result spreads into `Options`, that `isFirebaseWifError` and `SetupResult.cancelled` narrow, and how events, check IDs, and statuses are typed.
 - `test/consumer/` compiles a consumer program against the built `.d.ts` files (`npm run typecheck:consumer`, after the build in CI), so a breaking type change fails CI.
-- The engine tests (`test/core/engine.test.ts`) run `status`, `plan`, and `setup` against the `/testing` fakes; see `reconcile.md`.
+- The engine tests (`test/core/engine/`) run `status`, `plan`, and `setup` against the `/testing` fakes; see `reconcile.md`.
 - `test/presets.test.ts`, `test/credentials.test.ts`, `test/gh.test.ts`, and `test/testing/` cover the other entry points, including that the fakes behave like the real APIs in the ways the engine depends on.
