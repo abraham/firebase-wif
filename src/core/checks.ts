@@ -210,7 +210,7 @@ const oidcSub: Advisory = {
         repo: rt.ctx.repo,
         repoId: rt.ctx.repoId,
         ownerId: rt.ctx.ownerId,
-        branch: environment ? environment.branch : rt.ctx.defaultBranch,
+        branch: environment && environment.branch ? environment.branch : rt.ctx.defaultBranch,
         environment: environment ? environment.name : undefined,
       },
     );
