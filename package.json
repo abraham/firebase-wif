@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "Set up and check Firebase deploys from GitHub Actions with Workload Identity Federation",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abraham/firebase-wif.git"
+  },
   "type": "module",
   "engines": {
     "node": ">=22"
