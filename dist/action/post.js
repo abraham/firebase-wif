@@ -41,6 +41,7 @@ var createCore = ({
     saveState: (name, value) => fileCommand("GITHUB_STATE", name, value),
     getState: (name) => env[`STATE_${name}`] ?? "",
     info: (message) => stdout(`${message}${EOL}`),
+    notice: (message) => stdout(`::notice::${escapeData(message)}${EOL}`),
     warning: (message) => stdout(`::warning::${escapeData(message)}${EOL}`),
     error: (message) => stdout(`::error::${escapeData(message)}${EOL}`)
   };

@@ -7,7 +7,6 @@ import type { LocalFiles } from './types.js';
 export interface ResolvedContext {
   projectId: string;
   repo: string;
-  firebaseJson?: Record<string, unknown>;
   local: LocalFiles;
   /** Where each value came from, for display. */
   sources: { projectId: string; repo: string };
@@ -205,7 +204,6 @@ export const resolveContext = async ({
   return {
     projectId,
     repo: repoName,
-    firebaseJson,
     local: {
       firebaseJson,
       firebaserc,

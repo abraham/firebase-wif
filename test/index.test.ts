@@ -84,9 +84,9 @@ describe('library contract', () => {
 
   it('only reads the filesystem in context resolution', async () => {
     const dir = join(import.meta.dirname, '../src');
-    // The Action isn't part of the library; it writes the credentials file by design.
+    // The CLI and the Action aren't part of the library; they do their own I/O by design.
     const files = (await readdir(dir, { recursive: true })).filter(
-      (file) => file.endsWith('.ts') && !file.startsWith('action'),
+      (file) => file.endsWith('.ts') && !file.startsWith('action') && !file.startsWith('cli'),
     );
     const readers = [];
     for (const file of files) {
@@ -165,6 +165,7 @@ describe('exports', () => {
     const api = await import('../src/index.js');
     expect(Object.keys(api).sort()).toEqual([
       'CROSS_PROJECT_PERMISSIONS',
+      'DEFAULTS',
       'FirebaseWifError',
       'HttpError',
       'SETUP_PERMISSIONS',
@@ -172,11 +173,45 @@ describe('exports', () => {
       'createGoogleClient',
       'defaultGitHubClient',
       'defaultGoogleClient',
+      'isFirebaseWifError',
       'parseGitHubRemote',
       'plan',
+      'projectAliases',
       'resolveContext',
       'setup',
       'status',
     ]);
+  });
+
+  it('exposes the other entry points', async () => {
+    const keys = async (entry: Promise<object>) => Object.keys(await entry).sort();
+    expect(await keys(import('../src/presets.js'))).toEqual([
+      'BASE_APIS',
+      'PRESETS',
+      'PRESET_NAMES',
+      'SERVICE_ACCOUNT_USER_ROLE',
+      'apisFor',
+      'resolvePresets',
+      'rolesFor',
+    ]);
+    expect(await keys(import('../src/credentials.js'))).toEqual([
+      'FirebaseWifError',
+      'createCredentialsConfig',
+      'isFirebaseWifError',
+      'parseProviderName',
+      'verifyCredentials',
+    ]);
+    expect(await keys(import('../src/gh.js'))).toEqual(['ghCliClient']);
+    expect(await keys(import('../src/testing/index.js'))).toEqual([
+      'createConfiguredFakes',
+      'createFakeGitHub',
+      'createFakeGoogle',
+    ]);
+  });
+
+  it('shares one error class across entry points', async () => {
+    const [api, credentials] = await Promise.all([import('../src/index.js'), import('../src/credentials.js')]);
+    expect(credentials.FirebaseWifError).toBe(api.FirebaseWifError);
+    expect(credentials.isFirebaseWifError).toBe(api.isFirebaseWifError);
   });
 });

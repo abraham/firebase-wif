@@ -1,7 +1,7 @@
 # GitHub Action
 
 Code: `action.yml`, `src/action/main.ts`, `src/action/post.ts`, `src/action/core.ts`, `src/credentials.ts`, `dist/action/`
-Tests: `test/action/main.test.ts`, `test/action/post.test.ts`, `test/action/core.test.ts`, `test/credentials.test.ts`
+Tests: `test/action/main.test.ts`, `test/action/post.test.ts`, `test/action/core.test.ts`, `test/credentials.test.ts`, `test/structure.test.ts`
 
 `abraham/firebase-wif` turns the job's GitHub OIDC token into Google credentials for a service account. It writes a Google `external_account` credentials file and points the environment at it, so any Google client library, including `firebase-tools`, picks it up without a key. It also outputs the file's contents for deploy actions that take a service account JSON string.
 
@@ -43,9 +43,11 @@ The names use snake_case to match `google-github-actions/auth`, so switching onl
 
 `workload_identity_provider` and `service_account` have no defaults even though `setup` always writes the same repo variables: passing `${{ vars.* }}` explicitly shows anyone reading the workflow which identity it deploys as.
 
-The project ID comes from the `project_id` input, then the `default` project in `.firebaserc` in `working_directory`, then the project number in the provider name, so it always resolves. Most Google APIs accept the number; pass `project_id` when a tool needs the ID.
+The project ID comes from the `project_id` input, then the `default` project in `.firebaserc` in `working_directory`, then the project number in the provider name, so it always resolves. A missing `.firebaserc` falls through, but one that isn't valid JSON fails the step instead of being ignored. When the project number is used, the step logs a notice suggesting `project_id`, because most Google APIs accept the number but some tools need the ID.
 
-Boolean inputs accept `true` or `false` in any case; anything else fails the step.
+`working_directory` must be inside `GITHUB_WORKSPACE`; a path that leaves it fails the step.
+
+Boolean inputs accept `true` or `false` in any case; anything else fails the step. All inputs are trimmed.
 
 ## Outputs
 
@@ -67,6 +69,8 @@ With `export_environment: true`, later steps get:
 
 These are the variables Google client libraries, `firebase-tools`, and `gcloud` read, and the ones `google-github-actions/auth` sets.
 
+The Action can run more than once in a job, for example once per project. Each run writes its own file and its own outputs, and the last run's environment variables win.
+
 ## Main step
 
 1. Fail unless `GITHUB_SERVER_URL` is `https://github.com`: "Only github.com is supported; GitHub Enterprise Server is not."
@@ -77,11 +81,11 @@ These are the variables Google client libraries, `firebase-tools`, and `gcloud` 
 5. Build the credentials config and mask its one-line JSON.
 6. Resolve the project ID.
 7. Fail unless `RUNNER_TEMP` is set and outside `GITHUB_WORKSPACE`, so the file can't end up in a deploy, an artifact, or a commit.
-8. Write the config to `$RUNNER_TEMP/firebase-wif-<random UUID>.json` with mode `0600`, refusing to overwrite an existing file, and save its path for the post step.
-9. With `verify: true`, verify the credentials (see below).
+8. With `verify: true`, verify the credentials (see below).
+9. Write the config to `$RUNNER_TEMP/firebase-wif-<random UUID>.json` with mode `0600`, refusing to overwrite an existing file, and save its path for the post step.
 10. Export the environment variables, then set the outputs.
 
-Steps 1–8 run before any network request, and steps 1–7 before anything is written. A failure ends the step with one `::error::` line (the message, then the fix) and exit code 1. When verification fails, the file has already been written: the post step deletes it, and no outputs or environment variables are set.
+Steps 1–7 run before any network request, and nothing is written until verification has passed, so a failed step leaves no file, outputs, or environment variables behind. A failure ends the step with one `::error::` line (the message, then the fix) and exit code 1. If anything fails after the file is written, the post step still deletes it.
 
 ## Credentials file
 
@@ -106,11 +110,13 @@ A client library using it fetches a fresh OIDC token from GitHub, exchanges it a
 
 ## Verification
 
-Verification does the same exchange a client library will, once, so a broken setup fails in this step with a fix instead of deep inside a deploy:
+Verification does the same exchange a client library will, once, so a broken setup fails in this step with a fix instead of deep inside a deploy. It needs only the config in memory, not the file:
 
 1. Fetch the OIDC token from GitHub.
 2. Exchange it at STS for a federated token.
 3. Call `generateAccessToken` for the service account.
+
+Each request times out after 10 seconds. Network errors, timeouts, 429, and 5xx answers are retried twice, 1 and then 2 seconds later; other answers aren't retried, because they won't change. A request that still fails reports the stage and the last status or error, like the "Anything else" rows below.
 
 Each known failure maps to a message and a fix:
 
@@ -130,20 +136,23 @@ Messages quote at most 300 characters of Google's error. The tokens from the exc
 
 ## Post step
 
-The post step reads the saved path and deletes the file. A missing file, or no saved path because the main step failed early, is fine. If deleting fails, it logs a warning and still succeeds, so cleanup never fails a job that deployed.
+The post step always runs, including when the job fails or is cancelled. It reads the saved path and deletes the file. A missing file, or no saved path because the main step failed before writing, is fine. If deleting fails, it logs a warning and still succeeds, so cleanup never fails a job that deployed.
 
 ## Credentials library
 
-`@abraham/firebase-wif/credentials` exposes what the Action uses, for other actions and runners:
+`@abraham/firebase-wif/credentials` exposes everything the Action uses, so other actions and runners can do what it does:
 
 - `createCredentialsConfig({ provider, serviceAccount, audience?, requestUrl, requestToken })` builds the config above. It validates the provider name and service account email, and never reads the environment.
-- `verifyCredentials(config, { signal?, fetch? })` does the verification above and throws `VERIFY_FAILED` with the message and fix from the table, and `details: { stage, status }`, where `stage` is `oidc`, `sts`, or `impersonation`.
+- `verifyCredentials(config, { signal?, fetch? })` does the verification above, with its timeouts and retries, and throws `VERIFY_FAILED` with the message and fix from the table, and `details: { stage, status }`, where `stage` is `oidc`, `sts`, or `impersonation`.
+- `parseProviderName(name)` splits a provider resource name into `{ projectNumber, pool, provider }`, or returns `undefined` when it isn't one.
 
 ## Runtime and bundling
 
 The Action runs on `node24` with `main: dist/action/main.js` and `post: dist/action/post.js`. Both are esbuild bundles of `src/action/` (ESM, targeting Node 24, with a pinned esbuild version), committed to the repo and left out of the npm package. CI fails when the committed bundles don't match a fresh build.
 
-The Action doesn't depend on `@actions/core`. `src/action/core.ts` implements the parts it needs: reading inputs, the `GITHUB_OUTPUT`, `GITHUB_ENV`, and `GITHUB_STATE` file commands with random delimiters, and the `::add-mask::`, `::warning::`, and `::error::` workflow commands with escaped data. So the bundle contains only this package's code.
+The Action is built only on `@abraham/firebase-wif/credentials` and its own files in `src/action/`; it never imports the engine or other internal modules. That keeps the bundle small and means the credentials library is enough to reproduce it.
+
+The Action doesn't depend on `@actions/core`. `src/action/core.ts` implements the parts it needs: reading inputs, the `GITHUB_OUTPUT`, `GITHUB_ENV`, and `GITHUB_STATE` file commands with random delimiters, and the `::add-mask::`, `::notice::`, `::warning::`, and `::error::` workflow commands with escaped data. So the bundle contains only this package's code.
 
 ## Compatibility
 
@@ -153,14 +162,15 @@ Inputs, outputs, their defaults, the exported environment variable names, and th
 
 - The credentials file and `credentials_json` are secrets for the job's lifetime, because they hold the request token that can mint OIDC tokens until the job ends. Mask the request token and the JSON before anything else is printed, write the file with mode `0600` outside the workspace, and delete it in the post step. Never upload it as an artifact.
 - Never log, output, or export an OIDC token, federated token, or access token.
-- Never overwrite an existing file, and never write inside `GITHUB_WORKSPACE`.
+- Never overwrite an existing file, never write inside `GITHUB_WORKSPACE`, never read outside it, and never write before verification passes.
 - Refuse GitHub Enterprise Server, whose OIDC issuer the provider doesn't trust.
 - Ship only this package's code in the bundle, and fail CI when the committed bundle doesn't match its source.
 
 ## How it's tested
 
-- `test/action/main.test.ts` runs the main step in-process with a fake environment, temporary workspace and `RUNNER_TEMP` directories, and a fake `fetch` for GitHub's token endpoint, STS, and IAM Credentials. It checks the file's contents, mode, and location; the outputs, exported variables, and saved state; that the request token and JSON are masked first and no token appears in the log; the project ID order; `verify` and `export_environment`; every failure before writing; and that a failed verification leaves cleanup to the post step. It also runs the committed `dist/action/main.js` with `node`.
+- `test/action/main.test.ts` runs the main step in-process with a fake environment, temporary workspace and `RUNNER_TEMP` directories, and a fake `fetch` for GitHub's token endpoint, STS, and IAM Credentials. It checks the file's contents, mode, and location; the outputs, exported variables, and saved state; that the request token and JSON are masked first and no token appears in the log; the project ID order, the notice for a project number, and an invalid `.firebaserc`; a `working_directory` outside the workspace; `verify` and `export_environment`; every failure before writing; that a failed verification writes nothing; and two runs in one job. It also runs the committed `dist/action/main.js` with `node`.
 - `test/action/post.test.ts` checks that the file is deleted, that a missing file or missing state is fine, that a failed delete only warns, and runs the committed `dist/action/post.js`.
 - `test/action/core.test.ts` checks inputs, the file command format, escaping, masking, and the entry-point check that makes the bundles run on load.
-- `test/credentials.test.ts` checks the config format, the `audience` input, name validation, the exact requests verification makes, every row of the error table, that no token appears in an error, and that the abort signal reaches every request.
+- `test/credentials.test.ts` checks the config format, the `audience` input, name validation, provider name parsing, the exact requests verification makes, timeouts and which failures are retried, every row of the error table, that no token appears in an error, and that the abort signal reaches every request.
+- `test/structure.test.ts` checks that `src/action/` imports only from `/credentials` and its own files.
 - CI rebuilds the bundles and fails if they differ from the committed ones.

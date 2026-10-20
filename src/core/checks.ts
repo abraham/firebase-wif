@@ -10,12 +10,12 @@ import {
   repoPrincipal,
   type Runtime,
 } from './runtime.js';
-import type { Check } from './types.js';
+import type { Check, CheckId, ResourceId } from './types.js';
 import { analyzeWorkflows } from './workflows.js';
 
 /** A read-only check with no `setup` step. */
 export interface Advisory {
-  id: string;
+  id: Exclude<CheckId, ResourceId>;
   run(rt: Runtime): Promise<Omit<Check, 'id'>>;
 }
 

@@ -1,11 +1,25 @@
+import { readFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
-import { defaultGitHubClient, defaultGoogleClient, type Exec } from '../core/clients.js';
-import { projectAliases, resolveContext } from '../core/context.js';
-import { assertCanApply, plan, status } from '../core/engine.js';
-import { FirebaseWifError } from '../core/errors.js';
-import { DEFAULT_ENVIRONMENT, DEFAULT_VARIABLE_PREFIX } from '../core/naming.js';
-import type { ApplyResult, Context, GitHubClient, GoogleClient, Options, Plan, PresetName } from '../core/types.js';
+import {
+  DEFAULTS,
+  defaultGitHubClient,
+  defaultGoogleClient,
+  FirebaseWifError,
+  plan,
+  projectAliases,
+  resolveContext,
+  setup,
+  status,
+  type Context,
+  type Exec,
+  type GitHubClient,
+  type GoogleClient,
+  type Options,
+  type Plan,
+  type PresetName,
+  type SetupResult,
+} from '../index.js';
 import { PRESET_NAMES } from '../presets.js';
 import { renderPlan, renderStatus, type Sources } from './render.js';
 
@@ -26,14 +40,15 @@ Options:
   --role <role>                 Extra project role, repeatable
   --runtime-service-account <email>
                                 Functions runtime service account, repeatable (default: the compute default)
-  --environment <name>          GitHub environment (default: ${DEFAULT_ENVIRONMENT})
+  --environment <name>          GitHub environment (default: ${DEFAULTS.environment})
   --no-environment              Skip the GitHub environment
   --branch <name>               Branch allowed to deploy (default: the repo's default branch)
   --any-branch                  Let any branch deploy to the environment
-  --variable-prefix <prefix>    Repo variable prefix (default: ${DEFAULT_VARIABLE_PREFIX})
+  --variable-prefix <prefix>    Repo variable prefix (default: ${DEFAULTS.variablePrefix})
   --json                        Print JSON
   --cwd <dir>                   Directory to look for firebase.json and the git remote
   -h, --help                    Show this help
+  --version                     Show the version
 
 Setup options:
   --dry-run                     Print the plan without changing anything
@@ -52,10 +67,12 @@ export interface CliDeps {
   githubClient?: () => Promise<GitHubClient>;
   /** Whether prompts can be shown; defaults to stdin and stdout being terminals. */
   interactive?: boolean;
-  prompt?: (question: string) => Promise<boolean>;
+  prompt?: (question: string, signal?: AbortSignal) => Promise<boolean>;
+  /** Aborted on Ctrl-C. */
+  signal?: AbortSignal;
 }
 
-export const EXIT = { ok: 0, failed: 1, usage: 2, credentials: 3 } as const;
+export const EXIT = { ok: 0, failed: 1, usage: 2, credentials: 3, interrupted: 130 } as const;
 
 const NEXT_STEPS =
   'IAM changes can take a few minutes to take effect. Workflow examples: https://github.com/abraham/firebase-wif#usage\n';
@@ -76,14 +93,41 @@ const exitFor = (error: unknown): number => {
   }
 };
 
-const askOnTerminal = async (question: string): Promise<boolean> => {
+const askOnTerminal = async (question: string, signal?: AbortSignal): Promise<boolean> => {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
+  // In raw mode, Ctrl-C reaches readline as a key instead of a signal.
+  rl.on('SIGINT', () => process.emit('SIGINT'));
   try {
-    return /^y(es)?$/i.test((await rl.question(`${question} [y/N] `)).trim());
+    return /^y(es)?$/i.test((await rl.question(`${question} [y/N] `, { signal })).trim());
   } finally {
     rl.close();
   }
 };
+
+const OPTIONS = {
+  project: { type: 'string' },
+  'all-aliases': { type: 'boolean' },
+  repo: { type: 'string' },
+  pool: { type: 'string' },
+  provider: { type: 'string' },
+  'service-account': { type: 'string' },
+  preset: { type: 'string', multiple: true },
+  role: { type: 'string', multiple: true },
+  'runtime-service-account': { type: 'string', multiple: true },
+  environment: { type: 'string' },
+  'no-environment': { type: 'boolean' },
+  'any-branch': { type: 'boolean' },
+  branch: { type: 'string' },
+  'variable-prefix': { type: 'string' },
+  json: { type: 'boolean' },
+  cwd: { type: 'string' },
+  'dry-run': { type: 'boolean' },
+  yes: { type: 'boolean', short: 'y' },
+  adopt: { type: 'boolean' },
+  prune: { type: 'boolean' },
+  help: { type: 'boolean', short: 'h' },
+  version: { type: 'boolean' },
+} as const;
 
 /** Runs the CLI and returns its exit code. */
 export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> => {
@@ -91,44 +135,28 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
   const stdout = deps.stdout ?? ((text: string) => process.stdout.write(text));
   const stderr = deps.stderr ?? ((text: string) => process.stderr.write(text));
 
+  // --help and --version win over every other error, so read them leniently first.
+  const lenient = parseArgs({ args: argv, allowPositionals: true, strict: false, options: OPTIONS }).values;
+  if (lenient.help) {
+    stdout(USAGE);
+    return EXIT.ok;
+  }
+  if (lenient.version) {
+    const { version } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as {
+      version: string;
+    };
+    stdout(`${version}\n`);
+    return EXIT.ok;
+  }
+
   let parsed;
   try {
-    parsed = parseArgs({
-      args: argv,
-      allowPositionals: true,
-      options: {
-        project: { type: 'string' },
-        'all-aliases': { type: 'boolean' },
-        repo: { type: 'string' },
-        pool: { type: 'string' },
-        provider: { type: 'string' },
-        'service-account': { type: 'string' },
-        preset: { type: 'string', multiple: true },
-        role: { type: 'string', multiple: true },
-        'runtime-service-account': { type: 'string', multiple: true },
-        environment: { type: 'string' },
-        'no-environment': { type: 'boolean' },
-        'any-branch': { type: 'boolean' },
-        branch: { type: 'string' },
-        'variable-prefix': { type: 'string' },
-        json: { type: 'boolean' },
-        cwd: { type: 'string' },
-        'dry-run': { type: 'boolean' },
-        yes: { type: 'boolean', short: 'y' },
-        adopt: { type: 'boolean' },
-        prune: { type: 'boolean' },
-        help: { type: 'boolean', short: 'h' },
-      },
-    });
+    parsed = parseArgs({ args: argv, allowPositionals: true, options: OPTIONS });
   } catch (error) {
     stderr(`${(error as Error).message}\n\n${USAGE}`);
     return EXIT.usage;
   }
   const { values, positionals } = parsed;
-  if (values.help) {
-    stdout(USAGE);
-    return EXIT.ok;
-  }
 
   const command = positionals[0] ?? 'status';
   if (!['status', 'setup'].includes(command) || positionals.length > 1) {
@@ -155,6 +183,10 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
   };
 
   const fail = (error: unknown, code: number) => {
+    if (deps.signal?.aborted) {
+      stderr('Interrupted.\n');
+      return EXIT.interrupted;
+    }
     if (!(error instanceof FirebaseWifError)) throw error;
     if (values.json) {
       emit({ error: { code: error.code, message: error.message, fix: error.fix } });
@@ -208,9 +240,14 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
       github = false;
     }
 
-    const prefix = values['variable-prefix'] ?? DEFAULT_VARIABLE_PREFIX;
+    const prefix = values['variable-prefix'] ?? DEFAULTS.variablePrefix;
     const interactive = (deps.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY)) && !values.json;
-    const ask = deps.prompt ?? askOnTerminal;
+    const prompt = deps.prompt ?? askOnTerminal;
+    const ask = async (question: string) => {
+      const answer = await prompt(question, deps.signal);
+      deps.signal?.throwIfAborted();
+      return answer;
+    };
     // Later aliases reuse the first one's provider and service account (docs/multi-project.md).
     let home: Options['home'];
     let worst: number = EXIT.ok;
@@ -231,15 +268,15 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
         google,
         github,
         presets: presets?.length ? presets : 'auto',
-        firebaseJson: resolved.firebaseJson,
         roles: values.role,
         runtimeServiceAccounts: values['runtime-service-account'],
         names: { pool: values.pool, provider: values.provider, serviceAccount: values['service-account'] },
         variables: { provider: `${prefix}PROVIDER`, serviceAccount: `${prefix}SERVICE_ACCOUNT` },
         environment: values['no-environment']
           ? false
-          : { name: values.environment ?? DEFAULT_ENVIRONMENT, branch: values['any-branch'] ? false : values.branch },
+          : { name: values.environment ?? DEFAULTS.environment, branch: values['any-branch'] ? false : values.branch },
         local: resolved.local,
+        signal: deps.signal,
         ...(home ? { home } : {}),
       };
 
@@ -330,49 +367,51 @@ const runSetup = async ({
   emit: (payload: object) => void;
   fail: (error: unknown, code: number) => number;
 }): Promise<Outcome> => {
-  let planned: Plan;
-  try {
-    planned = await plan(options);
-  } catch (error) {
-    return { code: fail(error, exitFor(error)) };
-  }
-  const { context } = planned;
-
-  if (flags.json && flags.dryRun) {
-    const { changes, preflight } = planned;
-    emit({ context, changes, preflight });
-    return { code: EXIT.ok, context };
-  }
-  if (!flags.json) stdout(renderPlan(planned, sources));
-  if (flags.dryRun || (!planned.changes.length && !flags.json)) return { code: EXIT.ok, context };
-
-  if (planned.changes.some((change) => !change.manual)) {
+  if (flags.dryRun) {
     try {
-      assertCanApply(planned.changes, planned.preflight);
+      const planned = await plan(options);
+      const { context, changes, preflight } = planned;
+      if (flags.json) emit({ context, changes, preflight });
+      else stdout(renderPlan(planned, sources));
+      return { code: EXIT.ok, context };
     } catch (error) {
       return { code: fail(error, exitFor(error)) };
     }
-    if (!flags.yes) {
-      if (!interactive) {
-        stderr('Pass --yes to apply changes without a prompt.\n');
-        return { code: EXIT.usage };
-      }
-      if (!(await ask('Apply these changes?'))) {
-        stdout('Cancelled; nothing changed.\n');
-        return { code: EXIT.failed };
-      }
-    }
   }
 
-  let result: ApplyResult;
+  // Why `confirm` declined, since `setup` only reports that it was cancelled.
+  let declined: Outcome | undefined;
+  const confirm = async (planned: Plan): Promise<boolean> => {
+    if (!flags.json) stdout(renderPlan(planned, sources));
+    if (!planned.changes.length && !flags.json) {
+      declined = { code: EXIT.ok, context: planned.context };
+      return false;
+    }
+    if (flags.yes || planned.changes.every((change) => change.manual)) return true;
+    if (!interactive) {
+      stderr('Pass --yes to apply changes without a prompt.\n');
+      declined = { code: EXIT.usage };
+      return false;
+    }
+    if (!(await ask('Apply these changes?'))) {
+      stdout('Cancelled; nothing changed.\n');
+      declined = { code: EXIT.failed };
+      return false;
+    }
+    return true;
+  };
+
+  let result: SetupResult;
   try {
-    result = await planned.apply();
+    result = await setup({ ...options, confirm });
   } catch (error) {
     return { code: fail(error, exitFor(error)) };
   }
+  if (result.cancelled) return declined!;
 
+  const { cancelled: _, ...applied } = result;
   if (flags.json) {
-    emit(result);
+    emit(applied);
   } else {
     stdout(`\n${renderStatus(result.status, sources)}`);
     if (result.manual.length)

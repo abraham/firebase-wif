@@ -1,9 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { FirebaseWifError } from '../core/errors.js';
-import { parseProviderName } from '../core/naming.js';
-import { createCredentialsConfig, verifyCredentials } from '../credentials.js';
+import { FirebaseWifError, createCredentialsConfig, parseProviderName, verifyCredentials } from '../credentials.js';
 import { createCore, CREDENTIALS_PATH_STATE, isEntryPoint } from './core.js';
 
 const MISSING_OIDC_TOKEN =
@@ -23,15 +21,21 @@ const isInside = (child: string, parent: string) => {
   return path === '' || (!path.startsWith('..') && !isAbsolute(path));
 };
 
+/** The `.firebaserc` default project; a missing file is fine, an unreadable one isn't. */
 const defaultProject = async (dir: string): Promise<string | undefined> => {
+  let text;
   try {
-    const firebaserc = JSON.parse(await readFile(join(dir, '.firebaserc'), 'utf8')) as {
-      projects?: { default?: unknown };
-    };
-    return typeof firebaserc.projects?.default === 'string' ? firebaserc.projects.default : undefined;
+    text = await readFile(join(dir, '.firebaserc'), 'utf8');
   } catch {
     return undefined;
   }
+  let firebaserc: { projects?: { default?: unknown } };
+  try {
+    firebaserc = JSON.parse(text) as typeof firebaserc;
+  } catch {
+    throw new Error(`${join(dir, '.firebaserc')} is not valid JSON. Fix it, or pass project_id.`);
+  }
+  return typeof firebaserc?.projects?.default === 'string' ? firebaserc.projects.default : undefined;
 };
 
 /** Writes Google credentials for this job and exports them for later steps. Returns the exit code. */
@@ -67,8 +71,16 @@ export const runMain = async ({
     core.setSecret(json);
 
     const workspace = resolve(cwd, env.GITHUB_WORKSPACE ?? '.');
-    const fromFirebaserc = await defaultProject(resolve(workspace, core.getInput('working_directory') || '.'));
-    const projectId = core.getInput('project_id') || fromFirebaserc || parseProviderName(provider)!.projectNumber;
+    const directory = resolve(workspace, core.getInput('working_directory') || '.');
+    if (!isInside(directory, workspace)) throw new Error('working_directory must be inside GITHUB_WORKSPACE.');
+    const projectNumber = parseProviderName(provider)!.projectNumber;
+    const configured = core.getInput('project_id') || (await defaultProject(directory));
+    const projectId = configured || projectNumber;
+    if (!configured) {
+      core.notice(
+        `Using project number ${projectNumber} as the project ID. Pass project_id if a tool needs the project ID.`,
+      );
+    }
 
     if (!env.RUNNER_TEMP) throw new Error('RUNNER_TEMP is not set; this must run inside GitHub Actions.');
     const temp = resolve(cwd, env.RUNNER_TEMP);
@@ -77,15 +89,17 @@ export const runMain = async ({
         'RUNNER_TEMP is inside GITHUB_WORKSPACE, so the credentials file could end up in a deploy, artifact, or commit.',
       );
     }
-    const path = join(temp, `firebase-wif-${randomId()}.json`);
-    await writeFile(path, json, { mode: 0o600, flag: 'wx' });
-    core.saveState(CREDENTIALS_PATH_STATE, path);
-    core.info(`Wrote credentials for ${serviceAccount} to ${path}.`);
 
+    // Verify first, so a failure leaves nothing behind.
     if (verify) {
       await verifyCredentials(config, { fetch });
       core.info(`Verified that this job can act as ${serviceAccount}.`);
     }
+
+    const path = join(temp, `firebase-wif-${randomId()}.json`);
+    await writeFile(path, json, { mode: 0o600, flag: 'wx' });
+    core.saveState(CREDENTIALS_PATH_STATE, path);
+    core.info(`Wrote credentials for ${serviceAccount} to ${path}.`);
 
     if (exportEnvironment) {
       for (const name of [

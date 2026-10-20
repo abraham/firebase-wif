@@ -357,7 +357,7 @@ const setupWith = (fakes: ConfiguredFakes, extra: Partial<Parameters<typeof setu
   setup({ ...fakes.options, google: fakes.google, github: fakes.github, sleep: noSleep, ...extra });
 
 const applied = (result: SetupResult): ApplyResult => {
-  if ('cancelled' in result) throw new Error('setup was cancelled');
+  if (result.cancelled) throw new Error('setup was cancelled');
   return result;
 };
 

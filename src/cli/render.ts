@@ -1,4 +1,4 @@
-import type { ChangeAction, Check, Context, Plan, StatusReport } from '../core/types.js';
+import type { ChangeAction, Check, Context, Plan, ResolvedContext, StatusReport } from '../index.js';
 
 const SYMBOLS: Record<Check['status'], string> = { pass: '✓', warn: '!', fail: '✗', skipped: '-' };
 
@@ -20,10 +20,7 @@ const GROUPS: [prefix: string, title: string][] = [
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
-export interface Sources {
-  projectId: string;
-  repo: string;
-}
+export type Sources = ResolvedContext['sources'];
 
 const header = (title: string, ctx: Context, sources: Sources) => [
   title,

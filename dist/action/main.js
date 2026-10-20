@@ -8,6 +8,7 @@ var FirebaseWifError = class extends Error {
   code;
   fix;
   details;
+  // Errors raised mid-apply get their `ApplyFailure` details when the engine wraps them.
   constructor(code, message, options = {}) {
     super(message);
     this.name = "FirebaseWifError";
@@ -34,6 +35,8 @@ var STS_URL = "https://sts.googleapis.com/v1/token";
 var CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 var SETUP_FIX = "Run npx @abraham/firebase-wif setup locally.";
 var STATUS_FIX = "Run npx @abraham/firebase-wif status locally to see what is wrong.";
+var REQUEST_TIMEOUT_MS = 1e4;
+var RETRY_DELAYS_MS = [1e3, 2e3];
 var createCredentialsConfig = ({
   provider,
   serviceAccount,
@@ -70,6 +73,40 @@ var readBody = async (response) => {
   }
 };
 var failure = (stage, status) => (message, fix) => new FirebaseWifError("VERIFY_FAILED", message, { fix, details: { stage, status } });
+var STAGE_NAMES = {
+  oidc: "GitHub's OIDC token endpoint",
+  sts: "Google STS",
+  impersonation: "the IAM Service Account Credentials API"
+};
+var wait = (ms, signal) => new Promise((resolve2, reject) => {
+  const timer = setTimeout(resolve2, ms);
+  signal?.addEventListener(
+    "abort",
+    () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    },
+    { once: true }
+  );
+});
+var send = async (fetch, stage, url, init, signal) => {
+  for (let attempt = 0; ; attempt++) {
+    signal?.throwIfAborted();
+    const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+    const last = attempt === RETRY_DELAYS_MS.length;
+    try {
+      const response = await fetch(url, { ...init, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+      if (last || response.status !== 429 && response.status < 500) return response;
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason;
+      if (last) {
+        const reason = error instanceof Error ? error.message.slice(0, 300) : "unknown error";
+        throw failure(stage, 0)(`Couldn't reach ${STAGE_NAMES[stage]} (${reason}).`, "Re-run the job.");
+      }
+    }
+    await wait(RETRY_DELAYS_MS[attempt], signal);
+  }
+};
 var stsError = (status, body) => {
   const fail = failure("sts", status);
   const code = typeof body.error === "string" ? body.error : "unknown_error";
@@ -110,7 +147,13 @@ var impersonationError = (status, body, serviceAccount) => {
   );
 };
 var verifyCredentials = async (config, { signal, fetch = globalThis.fetch } = {}) => {
-  const oidc = await fetch(config.credential_source.url, { headers: config.credential_source.headers, signal });
+  const oidc = await send(
+    fetch,
+    "oidc",
+    config.credential_source.url,
+    { headers: config.credential_source.headers },
+    signal
+  );
   const oidcBody = await readBody(oidc);
   if (!oidc.ok || typeof oidcBody.value !== "string") {
     throw failure("oidc", oidc.status)(
@@ -118,28 +161,38 @@ var verifyCredentials = async (config, { signal, fetch = globalThis.fetch } = {}
       "Add `permissions: id-token: write` to the job."
     );
   }
-  const sts = await fetch(config.token_url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      grantType: "urn:ietf:params:oauth:grant-type:token-exchange",
-      audience: config.audience,
-      scope: CLOUD_PLATFORM_SCOPE,
-      requestedTokenType: "urn:ietf:params:oauth:token-type:access_token",
-      subjectToken: oidcBody.value,
-      subjectTokenType: config.subject_token_type
-    }),
+  const sts = await send(
+    fetch,
+    "sts",
+    config.token_url,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        grantType: "urn:ietf:params:oauth:grant-type:token-exchange",
+        audience: config.audience,
+        scope: CLOUD_PLATFORM_SCOPE,
+        requestedTokenType: "urn:ietf:params:oauth:token-type:access_token",
+        subjectToken: oidcBody.value,
+        subjectTokenType: config.subject_token_type
+      })
+    },
     signal
-  });
+  );
   const stsBody = await readBody(sts);
   if (!sts.ok || typeof stsBody.access_token !== "string") throw stsError(sts.status, stsBody);
   const serviceAccount = /serviceAccounts\/([^:]+):generateAccessToken$/.exec(config.service_account_impersonation_url)?.[1] ?? "the service account";
-  const impersonation = await fetch(config.service_account_impersonation_url, {
-    method: "POST",
-    headers: { authorization: `Bearer ${stsBody.access_token}`, "content-type": "application/json" },
-    body: JSON.stringify({ scope: [CLOUD_PLATFORM_SCOPE] }),
+  const impersonation = await send(
+    fetch,
+    "impersonation",
+    config.service_account_impersonation_url,
+    {
+      method: "POST",
+      headers: { authorization: `Bearer ${stsBody.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ scope: [CLOUD_PLATFORM_SCOPE] })
+    },
     signal
-  });
+  );
   const impersonationBody = await readBody(impersonation);
   if (!impersonation.ok || typeof impersonationBody.accessToken !== "string") {
     throw impersonationError(impersonation.status, impersonationBody, serviceAccount);
@@ -186,6 +239,7 @@ var createCore = ({
     saveState: (name, value) => fileCommand("GITHUB_STATE", name, value),
     getState: (name) => env[`STATE_${name}`] ?? "",
     info: (message) => stdout(`${message}${EOL}`),
+    notice: (message) => stdout(`::notice::${escapeData(message)}${EOL}`),
     warning: (message) => stdout(`::warning::${escapeData(message)}${EOL}`),
     error: (message) => stdout(`::error::${escapeData(message)}${EOL}`)
   };
@@ -199,12 +253,19 @@ var isInside = (child, parent) => {
   return path === "" || !path.startsWith("..") && !isAbsolute(path);
 };
 var defaultProject = async (dir) => {
+  let text;
   try {
-    const firebaserc = JSON.parse(await readFile(join(dir, ".firebaserc"), "utf8"));
-    return typeof firebaserc.projects?.default === "string" ? firebaserc.projects.default : void 0;
+    text = await readFile(join(dir, ".firebaserc"), "utf8");
   } catch {
     return void 0;
   }
+  let firebaserc;
+  try {
+    firebaserc = JSON.parse(text);
+  } catch {
+    throw new Error(`${join(dir, ".firebaserc")} is not valid JSON. Fix it, or pass project_id.`);
+  }
+  return typeof firebaserc?.projects?.default === "string" ? firebaserc.projects.default : void 0;
 };
 var runMain = async ({
   env = process.env,
@@ -236,8 +297,16 @@ var runMain = async ({
     const json = JSON.stringify(config);
     core.setSecret(json);
     const workspace = resolve(cwd, env.GITHUB_WORKSPACE ?? ".");
-    const fromFirebaserc = await defaultProject(resolve(workspace, core.getInput("working_directory") || "."));
-    const projectId = core.getInput("project_id") || fromFirebaserc || parseProviderName(provider).projectNumber;
+    const directory = resolve(workspace, core.getInput("working_directory") || ".");
+    if (!isInside(directory, workspace)) throw new Error("working_directory must be inside GITHUB_WORKSPACE.");
+    const projectNumber = parseProviderName(provider).projectNumber;
+    const configured = core.getInput("project_id") || await defaultProject(directory);
+    const projectId = configured || projectNumber;
+    if (!configured) {
+      core.notice(
+        `Using project number ${projectNumber} as the project ID. Pass project_id if a tool needs the project ID.`
+      );
+    }
     if (!env.RUNNER_TEMP) throw new Error("RUNNER_TEMP is not set; this must run inside GitHub Actions.");
     const temp = resolve(cwd, env.RUNNER_TEMP);
     if (isInside(temp, workspace)) {
@@ -245,14 +314,14 @@ var runMain = async ({
         "RUNNER_TEMP is inside GITHUB_WORKSPACE, so the credentials file could end up in a deploy, artifact, or commit."
       );
     }
-    const path = join(temp, `firebase-wif-${randomId()}.json`);
-    await writeFile(path, json, { mode: 384, flag: "wx" });
-    core.saveState(CREDENTIALS_PATH_STATE, path);
-    core.info(`Wrote credentials for ${serviceAccount} to ${path}.`);
     if (verify) {
       await verifyCredentials(config, { fetch });
       core.info(`Verified that this job can act as ${serviceAccount}.`);
     }
+    const path = join(temp, `firebase-wif-${randomId()}.json`);
+    await writeFile(path, json, { mode: 384, flag: "wx" });
+    core.saveState(CREDENTIALS_PATH_STATE, path);
+    core.info(`Wrote credentials for ${serviceAccount} to ${path}.`);
     if (exportEnvironment) {
       for (const name of [
         "GOOGLE_APPLICATION_CREDENTIALS",

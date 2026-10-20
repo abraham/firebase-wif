@@ -1,9 +1,9 @@
 # CLI
 
 Code: `src/cli/main.ts`, `src/cli/render.ts`, `src/cli/index.ts`
-Tests: `test/cli/main.test.ts`, `test/cli/render.test.ts`, `test/cli/index.test.ts`
+Tests: `test/cli/main.test.ts`, `test/cli/render.test.ts`, `test/cli/index.test.ts`, `test/structure.test.ts`
 
-The `firebase-wif` command is a thin layer over the Node API. It discovers the project and repo, gets credentials, calls `status` or `plan`/`apply`, and renders the result. Every decision about what to check or change lives in the engine, so the CLI only owns arguments, prompts, output, and exit codes.
+The `firebase-wif` command is a thin layer over the Node API. It discovers the project and repo, gets credentials, calls `status`, `plan`, or `setup`, and renders the result. Every decision about what to check or change lives in the engine, so the CLI only owns arguments, prompts, output, and exit codes. It imports only from the public entry points (see `node-api.md`), so a program can do anything it does.
 
 It's installed as the `firebase-wif` bin (`dist/cli/index.js`) of `@abraham/firebase-wif`, and runs without installing as `npx @abraham/firebase-wif`.
 
@@ -14,7 +14,7 @@ firebase-wif [status] [options]   read-only checks (the default command)
 firebase-wif setup [options]      create or repair everything status checks
 ```
 
-At most one command is allowed. Anything else, including extra positional arguments, prints `Unknown command` and the usage to stderr and exits 2. `-h`/`--help` prints the usage to stdout and exits 0, before any other validation.
+At most one command is allowed. Anything else, including extra positional arguments, prints `Unknown command` and the usage to stderr and exits 2. `-h`/`--help` prints the usage to stdout and `--version` prints the package version, both exiting 0 before any other validation, so `firebase-wif setup --bogus --help` still shows the help.
 
 ## Options
 
@@ -36,6 +36,8 @@ At most one command is allowed. Anything else, including extra positional argume
 | `--variable-prefix <prefix>`                     | `FIREBASE_WIF_`                               | Repo variables are `<prefix>PROVIDER` and `<prefix>SERVICE_ACCOUNT`             |
 | `--json`                                         | off                                           | Print JSON instead of text (see JSON output)                                    |
 | `--cwd <dir>`                                    | the current directory                         | Where to look for `firebase.json`, `.firebaserc`, workflows, and the git remote |
+| `-h`, `--help`                                   |                                               | Print the usage                                                                 |
+| `--version`                                      |                                               | Print the version                                                               |
 
 `setup` only:
 
@@ -71,17 +73,20 @@ Runs the engine's `status` and prints the report. The CLI always passes `adopt: 
 
 ## `setup`
 
-1. Build the plan with `plan()`. In a terminal, if the engine finds a legacy setup and `--adopt` wasn't passed, ask `Adopt <provider> and <service account> from <variable> and <variable>?` first. Without a terminal and without `--adopt`, legacy setups aren't adopted.
-2. Print the plan. If it's empty, print `Already set up.` and exit 0. With `--dry-run`, stop here and exit 0.
-3. If the plan has changes firebase-wif can make itself (not only manual steps):
-   - If the permission preflight found missing permissions for Google Cloud changes, print the `MISSING_PERMISSIONS` error and exit 3 before writing anything.
-   - Without `--yes`, ask `Apply these changes? [y/N]`. Declining prints `Cancelled; nothing changed.` and exits 1. When the CLI can't prompt (stdin or stdout isn't a terminal, or `--json`), it prints `Pass --yes to apply changes without a prompt.` and exits 2.
-4. Apply. Each change prints `✓ <description>` as it finishes, and retries print `retrying in <n>s: <reason>`.
-5. Print the final status report, then `Do by hand:` with any manual steps, then, if anything was applied, a note that IAM changes can take a few minutes and a link to the README workflow examples.
+1. Without `--dry-run`, call the engine's `setup` with a `confirm` callback. With `--dry-run`, call `plan` instead. In a terminal, if the engine finds a legacy setup and `--adopt` wasn't passed, ask `Adopt <provider> and <service account> from <variable> and <variable>?` first. Without a terminal and without `--adopt`, legacy setups aren't adopted.
+2. If the operator is missing permissions for Google Cloud changes, the engine throws `MISSING_PERMISSIONS` before `confirm` is called: print the error, which lists the permissions, and exit 3. Nothing has been written. `--dry-run` still prints the plan, so it shows what needs those permissions.
+3. `confirm` prints the plan. If it's empty, print `Already set up.` and exit 0. With `--dry-run`, the plan is printed and the run exits 0.
+4. If the plan has changes firebase-wif can make itself (not only manual steps) and `--yes` wasn't passed, ask `Apply these changes? [y/N]`. Declining prints `Cancelled; nothing changed.` and exits 1. When the CLI can't prompt (stdin or stdout isn't a terminal, or `--json`), it prints `Pass --yes to apply changes without a prompt.` and exits 2.
+5. Apply. Each change prints `✓ <description>` as it finishes, and retries print `retrying in <n>s: <reason>`.
+6. Print the final status report, then `Do by hand:` with any manual steps, then, if anything was applied, a note that IAM changes can take a few minutes and a link to the README workflow examples.
 
 A plan with only manual steps (for example, repo variables without GitHub access) skips the prompt and goes straight to the final status.
 
 Prompts accept `y` or `yes` in any case; anything else is no.
+
+## Interrupting
+
+Ctrl-C (SIGINT) aborts the run through the engine's `signal`: no new request starts and nothing more is written. The CLI prints `Interrupted.` to stderr and exits 130. During `setup`, the `✓` lines above it show what was already applied, and running `setup` again finishes the rest, because every step is safe to repeat. Ctrl-C at a prompt is the same as declining, but exits 130. A second Ctrl-C exits immediately.
 
 ## `--all-aliases`
 
@@ -89,7 +94,7 @@ Runs the command once per project in `.firebaserc`: each project once, under its
 
 - Each project's output starts with its own header; text output separates projects with a blank line.
 - The exit code is the worst one across projects.
-- A project that couldn't be checked or set up (an error, a declined prompt, or a missing `--yes`) stops the run, because later projects have no trust chain to share.
+- A project that couldn't be checked or set up (an error, a declined prompt, a missing `--yes`, or Ctrl-C) stops the run, because later projects have no trust chain to share.
 - It fails with exit 2 when `.firebaserc` has no projects.
 
 ## Text output
@@ -139,7 +144,7 @@ With `--json`, results and errors go to stdout as one pretty-printed JSON docume
 | `setup` with an empty plan | The `ApplyResult`, with nothing applied                                |
 | A `FirebaseWifError`       | `{ error: { code, message, fix } }`, with the exit code from the table |
 
-Usage errors the CLI finds itself (an unknown flag, conflicting flags, `setup` without `--yes`) are still printed as text to stderr, with exit code 2. The GitHub-credentials note also goes to stderr.
+Usage errors the CLI finds itself (an unknown flag, conflicting flags, `setup` without `--yes`) are still printed as text to stderr, with exit code 2. So are the GitHub-credentials note and `Interrupted.`. The JSON output never includes the `cancelled` field of the engine's `SetupResult`.
 
 With `--all-aliases`, the output is one array with an entry per project: the object above with an `alias` field added, for example `[{ "alias": "default", "ok": true, ... }]`.
 
@@ -149,10 +154,11 @@ The types are defined in `node-api.md`.
 
 | Code | Meaning                                                                                                                                                                                                    |
 | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0    | `status`: no check failed (warnings are fine). `setup`: the final status passes, the plan was empty, or `--dry-run`. `--help`.                                                                             |
+| 0    | `status`: no check failed (warnings are fine). `setup`: the final status passes, the plan was empty, or `--dry-run`. `--help` and `--version`.                                                             |
 | 1    | `status`: a check failed. `setup`: the final status fails, the prompt was declined, or applying stopped (`APPLY_FAILED`, `PROVIDER_OWNED_BY_OTHER_REPO`, `ORG_POLICY_BLOCKS_ISSUER`, `OPERATION_TIMEOUT`). |
 | 2    | Usage error: unknown command or flag, conflicting flags, unknown preset, `INVALID_NAME`, discovery failure, `--all-aliases` without aliases, or `setup` that needs `--yes`.                                |
 | 3    | Can't run: no Google credentials, the project or repo can't be read (`PROJECT_NOT_FOUND`, `REPO_NOT_FOUND` from the API), or `MISSING_PERMISSIONS`.                                                        |
+| 130  | Interrupted with Ctrl-C.                                                                                                                                                                                   |
 
 Errors that aren't a `FirebaseWifError` are bugs. They aren't caught, so Node prints the stack trace and exits 1.
 
@@ -165,10 +171,12 @@ Commands, flags, exit codes, and the JSON output shapes are public API: changing
 - Never print token values, in text or JSON. Credentials come from the lookup in `context-and-credentials.md`, which runs `gcloud` and `gh` with `execFile`, never a shell.
 - Never change anything without confirmation: `setup` asks first, or needs `--yes` when it can't ask. `--dry-run` and `status` never write.
 - Never adopt a legacy setup without asking, unless `--adopt` is passed.
-- Check permissions before writing, so a run without enough access stops before its first change instead of partway through.
+- Check permissions before asking or writing, so a run without enough access stops before its first change instead of partway through.
+- Stop writing as soon as the run is interrupted.
 
 ## How it's tested
 
-- `test/cli/main.test.ts` runs `main()` in-process with injected dependencies: the `/testing` fakes as the Google and GitHub clients, a temporary repo directory, a fake `git` remote, captured stdout and stderr, and an injectable terminal check and prompt. It covers the full status report as an inline snapshot, every exit code, JSON output, the prompt and `--yes` paths, adoption, missing GitHub credentials, `--all-aliases` in text and JSON, and that `--dry-run` and declined prompts write nothing.
+- `test/cli/main.test.ts` runs `main()` in-process with injected dependencies: the `/testing` fakes as the Google and GitHub clients, a temporary repo directory, a fake `git` remote, captured stdout and stderr, an injectable terminal check and prompt, and an injectable abort signal standing in for Ctrl-C. It covers the full status report as an inline snapshot, every exit code, JSON output, `--help` and `--version` ahead of other errors, the prompt and `--yes` paths, missing permissions before any prompt, adoption, missing GitHub credentials, interrupting during apply and at a prompt, `--all-aliases` in text and JSON, and that `--dry-run` and declined prompts write nothing.
 - `test/cli/render.test.ts` checks the text rendering of reports and plans directly: grouping, symbols and signs, fix lines, summary counts, and the `home` and `adopt` header lines.
-- `test/cli/index.test.ts` checks that the bin entry point passes `process.argv` to `main()` and sets `process.exitCode` from its result.
+- `test/cli/index.test.ts` checks that the bin entry point passes `process.argv` to `main()`, ties SIGINT to its abort signal, and sets `process.exitCode` from its result.
+- `test/structure.test.ts` checks that `src/cli/` imports only from the public entry points.

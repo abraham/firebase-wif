@@ -87,7 +87,7 @@ export const run = async (): Promise<number> => {
   const applied: ApplyResult = await planned.apply({ signal: AbortSignal.timeout(1000) });
 
   const result: SetupResult = await setup({ ...options, confirm: async (next) => next.changes.length > 0 });
-  const cancelled = 'cancelled' in result ? result.plan.changes.length : result.applied.length;
+  const cancelled = result.cancelled ? result.plan.changes.length : result.applied.length;
 
   return failed.length + context.roles.length + actions.length + applied.manual.length + cancelled;
 };

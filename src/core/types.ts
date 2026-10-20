@@ -52,7 +52,7 @@ export interface Options {
   environment?: { name: string; branch?: string | false } | false;
   prune?: boolean;
   /** Reuse a setup found through legacy repo variables (default `false`). A function decides per candidate. */
-  adopt?: boolean | ((candidate: AdoptCandidate) => Promise<boolean>);
+  adopt?: boolean | ((candidate: AdoptCandidate) => boolean | Promise<boolean>);
   local?: LocalFiles;
   onEvent?: (event: ProgressEvent) => void;
   signal?: AbortSignal;
@@ -84,8 +84,36 @@ export interface Context {
 
 export type CheckStatus = 'pass' | 'warn' | 'fail' | 'skipped';
 
+/** The reconcile resources, in apply order. */
+export type ResourceId =
+  | 'gcp.apis'
+  | 'gcp.pool'
+  | 'gcp.provider'
+  | 'gcp.provider-condition'
+  | 'gcp.service-account'
+  | 'gcp.project-roles'
+  | 'gcp.wi-user'
+  | 'gcp.runtime-sa-user'
+  | 'gh.variables'
+  | 'gh.environment';
+
+export type CheckId =
+  | ResourceId
+  | 'local.firebase-json'
+  | 'local.project-match'
+  | 'local.creds-ignored'
+  | 'gcp.project'
+  | 'gcp.operator'
+  | 'gcp.sa-keys'
+  | 'gcp.extra-roles'
+  | 'gcp.wi-user-broad'
+  | 'gh.repo'
+  | 'gh.legacy-secrets'
+  | 'gh.oidc-sub'
+  | 'gh.workflows';
+
 export interface Check {
-  id: string;
+  id: CheckId;
   status: CheckStatus;
   message: string;
   fix?: string;
@@ -94,7 +122,7 @@ export interface Check {
 export type ChangeAction = 'create' | 'update' | 'undelete' | 'enable' | 'bind' | 'unbind' | 'set';
 
 export interface Change {
-  resource: string;
+  resource: ResourceId;
   action: ChangeAction;
   description: string;
   /** Can't be applied with the given credentials; `description` says what to do by hand. */
@@ -131,10 +159,10 @@ export interface ApplyResult {
 
 export interface SetupOptions extends Options {
   /** Called with the plan before anything is written; return `false` to cancel. Default: always apply. */
-  confirm?: (plan: Plan) => Promise<boolean>;
+  confirm?: (plan: Plan) => boolean | Promise<boolean>;
 }
 
-export type SetupResult = ApplyResult | { cancelled: true; plan: Plan };
+export type SetupResult = (ApplyResult & { cancelled: false }) | { cancelled: true; plan: Plan };
 
 export type ProgressEvent =
   | { type: 'check'; check: Check }

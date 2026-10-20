@@ -1,12 +1,15 @@
 import { FirebaseWifError } from './core/errors.js';
 import { parseProviderName, validateServiceAccountEmail } from './core/naming.js';
 
-export { FirebaseWifError } from './core/errors.js';
+export { FirebaseWifError, isFirebaseWifError } from './core/errors.js';
+export { parseProviderName } from './core/naming.js';
 
 const STS_URL = 'https://sts.googleapis.com/v1/token';
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 const SETUP_FIX = 'Run npx @abraham/firebase-wif setup locally.';
 const STATUS_FIX = 'Run npx @abraham/firebase-wif status locally to see what is wrong.';
+const REQUEST_TIMEOUT_MS = 10_000;
+const RETRY_DELAYS_MS = [1000, 2000];
 
 /** The Google `external_account` credential file format, as written by google-github-actions/auth. */
 export interface ExternalAccountConfig {
@@ -72,8 +75,56 @@ const readBody = async (response: Response): Promise<Record<string, unknown>> =>
   }
 };
 
-const failure = (stage: 'oidc' | 'sts' | 'impersonation', status: number) => (message: string, fix: string) =>
+type Stage = 'oidc' | 'sts' | 'impersonation';
+
+const failure = (stage: Stage, status: number) => (message: string, fix: string) =>
   new FirebaseWifError('VERIFY_FAILED', message, { fix, details: { stage, status } });
+
+const STAGE_NAMES: Record<Stage, string> = {
+  oidc: "GitHub's OIDC token endpoint",
+  sts: 'Google STS',
+  impersonation: 'the IAM Service Account Credentials API',
+};
+
+const wait = (ms: number, signal: AbortSignal | undefined) =>
+  new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        reject(signal.reason);
+      },
+      { once: true },
+    );
+  });
+
+/** Fetches with a per-request timeout, retrying network errors, timeouts, 429, and 5xx. */
+const send = async (
+  fetch: typeof globalThis.fetch,
+  stage: Stage,
+  url: string,
+  init: RequestInit,
+  signal: AbortSignal | undefined,
+): Promise<Response> => {
+  for (let attempt = 0; ; attempt++) {
+    signal?.throwIfAborted();
+    const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+    const last = attempt === RETRY_DELAYS_MS.length;
+    try {
+      const response = await fetch(url, { ...init, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+      if (last || (response.status !== 429 && response.status < 500)) return response;
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason;
+      if (last) {
+        // Only the error's own message: a cause could carry request details.
+        const reason = error instanceof Error ? error.message.slice(0, 300) : 'unknown error';
+        throw failure(stage, 0)(`Couldn't reach ${STAGE_NAMES[stage]} (${reason}).`, 'Re-run the job.');
+      }
+    }
+    await wait(RETRY_DELAYS_MS[attempt]!, signal);
+  }
+};
 
 const stsError = (status: number, body: Record<string, unknown>) => {
   const fail = failure('sts', status);
@@ -124,7 +175,13 @@ export const verifyCredentials = async (
   config: ExternalAccountConfig,
   { signal, fetch = globalThis.fetch }: { signal?: AbortSignal; fetch?: typeof globalThis.fetch } = {},
 ): Promise<void> => {
-  const oidc = await fetch(config.credential_source.url, { headers: config.credential_source.headers, signal });
+  const oidc = await send(
+    fetch,
+    'oidc',
+    config.credential_source.url,
+    { headers: config.credential_source.headers },
+    signal,
+  );
   const oidcBody = await readBody(oidc);
   if (!oidc.ok || typeof oidcBody.value !== 'string') {
     throw failure('oidc', oidc.status)(
@@ -133,31 +190,41 @@ export const verifyCredentials = async (
     );
   }
 
-  const sts = await fetch(config.token_url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      grantType: 'urn:ietf:params:oauth:grant-type:token-exchange',
-      audience: config.audience,
-      scope: CLOUD_PLATFORM_SCOPE,
-      requestedTokenType: 'urn:ietf:params:oauth:token-type:access_token',
-      subjectToken: oidcBody.value,
-      subjectTokenType: config.subject_token_type,
-    }),
+  const sts = await send(
+    fetch,
+    'sts',
+    config.token_url,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        grantType: 'urn:ietf:params:oauth:grant-type:token-exchange',
+        audience: config.audience,
+        scope: CLOUD_PLATFORM_SCOPE,
+        requestedTokenType: 'urn:ietf:params:oauth:token-type:access_token',
+        subjectToken: oidcBody.value,
+        subjectTokenType: config.subject_token_type,
+      }),
+    },
     signal,
-  });
+  );
   const stsBody = await readBody(sts);
   if (!sts.ok || typeof stsBody.access_token !== 'string') throw stsError(sts.status, stsBody);
 
   const serviceAccount =
     /serviceAccounts\/([^:]+):generateAccessToken$/.exec(config.service_account_impersonation_url)?.[1] ??
     'the service account';
-  const impersonation = await fetch(config.service_account_impersonation_url, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${stsBody.access_token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ scope: [CLOUD_PLATFORM_SCOPE] }),
+  const impersonation = await send(
+    fetch,
+    'impersonation',
+    config.service_account_impersonation_url,
+    {
+      method: 'POST',
+      headers: { authorization: `Bearer ${stsBody.access_token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ scope: [CLOUD_PLATFORM_SCOPE] }),
+    },
     signal,
-  });
+  );
   const impersonationBody = await readBody(impersonation);
   if (!impersonation.ok || typeof impersonationBody.accessToken !== 'string') {
     throw impersonationError(impersonation.status, impersonationBody, serviceAccount);

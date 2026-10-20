@@ -98,6 +98,34 @@ describe('runMain', () => {
     const fallback = await runner({ verify: 'false' });
     await fallback.run();
     expect(commands(await fallback.read('output')).project_id).toBe('123456789012');
+    expect(fallback.stdout()).toContain('::notice::Using project number 123456789012 as the project ID.');
+    expect(explicit.stdout()).not.toContain('::notice::');
+  });
+
+  it('fails on an invalid .firebaserc instead of ignoring it', async () => {
+    const action = await runner({ verify: 'false' });
+    await writeFile(join(action.workspace, '.firebaserc'), '{ nope');
+    expect(await action.run()).toBe(1);
+    expect(action.stdout()).toContain('.firebaserc is not valid JSON. Fix it, or pass project_id.');
+    expect(await readdir(action.temp)).toEqual([]);
+  });
+
+  it('refuses a working_directory outside the workspace', async () => {
+    const action = await runner({ working_directory: '../temp', verify: 'false' });
+    expect(await action.run()).toBe(1);
+    expect(action.stdout()).toContain('::error::working_directory must be inside GITHUB_WORKSPACE.');
+    expect(await readdir(action.temp)).toEqual([]);
+  });
+
+  it('writes a separate file for each run in a job', async () => {
+    const action = await runner({ verify: 'false' });
+    let id = 0;
+    const run = () =>
+      runMain({ env: action.env, stdout: () => {}, cwd: action.workspace, randomId: () => `run-${++id}` });
+    expect(await run()).toBe(0);
+    expect(await run()).toBe(0);
+    expect((await readdir(action.temp)).sort()).toEqual(['firebase-wif-run-1.json', 'firebase-wif-run-2.json']);
+    expect(action.env.GOOGLE_APPLICATION_CREDENTIALS).toBe(join(action.temp, 'firebase-wif-run-2.json'));
   });
 
   it('reads .firebaserc from working_directory', async () => {
@@ -118,14 +146,16 @@ describe('runMain', () => {
     expect(await action.read('env')).toBe('');
   });
 
-  it('fails with a fix when verification fails, leaving cleanup to post', async () => {
+  it('fails with a fix when verification fails, writing nothing', async () => {
     const action = await runner({}, { FAKE_IMPERSONATION_STATUS: '403' });
     expect(await action.run()).toBe(1);
     expect(action.stdout()).toContain(
       `::error::This repository can't act as ${SA}; it needs roles/iam.workloadIdentityUser. Run npx @abraham/firebase-wif setup locally.`,
     );
     expect(await action.read('output')).toBe('');
-    expect(commands(await action.read('state')).credentials_path).toBe(join(action.temp, 'firebase-wif-abc.json'));
+    expect(await action.read('env')).toBe('');
+    expect(await action.read('state')).toBe('');
+    expect(await readdir(action.temp)).toEqual([]);
   });
 
   it.each([

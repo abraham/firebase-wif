@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FirebaseWifError, HttpError, statusOf } from '../../src/core/errors.js';
+import { FirebaseWifError, HttpError, isFirebaseWifError, statusOf } from '../../src/core/errors.js';
 
 describe('FirebaseWifError', () => {
   it('carries a code, fix, and details', () => {
@@ -21,6 +21,17 @@ describe('FirebaseWifError', () => {
     const error = new FirebaseWifError('INVALID_NAME', 'Bad name.');
     expect(error.fix).toBeUndefined();
     expect(error.details).toBeUndefined();
+  });
+});
+
+describe('isFirebaseWifError', () => {
+  it('matches by class and, when given, by code', () => {
+    const error = new FirebaseWifError('INVALID_NAME', 'Bad name.');
+    expect(isFirebaseWifError(error)).toBe(true);
+    expect(isFirebaseWifError(error, 'INVALID_NAME')).toBe(true);
+    expect(isFirebaseWifError(error, 'APPLY_FAILED')).toBe(false);
+    expect(isFirebaseWifError(new Error('Bad name.'))).toBe(false);
+    expect(isFirebaseWifError(undefined)).toBe(false);
   });
 });
 

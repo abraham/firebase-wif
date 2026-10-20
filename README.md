@@ -8,20 +8,39 @@ Deploy to Firebase from GitHub Actions with Workload Identity Federation (OIDC),
 
 ## Quick start
 
-In your repo, signed in with `gcloud auth login` (or Application Default Credentials) and `gh auth login`:
+1. Sign in to Google Cloud and GitHub:
 
-```sh
-npx @abraham/firebase-wif setup
-```
+   ```sh
+   gcloud auth login
+   gh auth login
+   ```
 
-It reads the project from `.firebaserc` and the repo from the git remote, prints a plan, and asks before changing anything. It creates:
+2. In your repo, run setup. It reads the project from `.firebaserc` and the repo from the git remote, prints a plan, and asks before changing anything:
 
-- A workload identity pool (`github`) and a provider (`github-<repoId>`) that only trusts this repository's numeric ID.
-- A deploy service account (`github-<repoId>`) with the roles for what `firebase.json` deploys (Hosting only by default).
-- The repo variables `FIREBASE_WIF_PROVIDER` and `FIREBASE_WIF_SERVICE_ACCOUNT`.
-- A `production` environment that only the default branch can deploy to.
+   ```sh
+   npx @abraham/firebase-wif setup
+   ```
 
-Check it any time with `npx @abraham/firebase-wif status`. Then add the Action to a workflow.
+3. Add the Action to your deploy workflow, before the deploy step:
+
+   ```yaml
+   permissions:
+     contents: read
+     id-token: write
+   jobs:
+     deploy:
+       runs-on: ubuntu-latest
+       environment: production
+       steps:
+         - uses: actions/checkout@v7
+         - uses: abraham/firebase-wif@v0.1.0
+           with:
+             workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
+             service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
+         - run: npx firebase-tools deploy --only hosting --non-interactive
+   ```
+
+Setup creates a workload identity pool and provider that only trust this repository, a deploy service account with the roles for what `firebase.json` deploys (Hosting only by default), the repo variables the Action reads, and a `production` environment that only the default branch can deploy to. Check it any time with `npx @abraham/firebase-wif status`.
 
 ## Usage
 

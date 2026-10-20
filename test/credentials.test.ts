@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { createCredentialsConfig, verifyCredentials, type ExternalAccountConfig } from '../src/credentials.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createCredentialsConfig, parseProviderName, verifyCredentials } from '../src/credentials.js';
 
 const PROVIDER = 'projects/123/locations/global/workloadIdentityPools/github/providers/github-42';
 const SA = 'github-42@demo-project.iam.gserviceaccount.com';
@@ -51,25 +51,61 @@ describe('createCredentialsConfig', () => {
   });
 });
 
+describe('parseProviderName', () => {
+  it('splits a provider resource name', () => {
+    expect(parseProviderName(PROVIDER)).toEqual({ projectNumber: '123', pool: 'github', provider: 'github-42' });
+    expect(parseProviderName('github')).toBeUndefined();
+  });
+});
+
 type Reply = { status: number; body: unknown };
 
 /** Fakes GitHub's token endpoint, STS, and IAM Credentials; records each request. */
-const backend = ({ oidc, sts, impersonation }: { oidc?: Reply; sts?: Reply; impersonation?: Reply } = {}) => {
+const backend = ({
+  oidc,
+  sts,
+  impersonation,
+}: { oidc?: Reply | Reply[] | Error; sts?: Reply | Reply[] | Error; impersonation?: Reply | Reply[] | Error } = {}) => {
   const requests: { url: string; init: RequestInit }[] = [];
+  const queues = new Map<string, (Reply | Error)[]>();
+  const next = (key: string, reply: Reply | Reply[] | Error | undefined, fallback: Reply): Reply | Error => {
+    if (!Array.isArray(reply)) return reply ?? fallback;
+    if (!queues.has(key)) queues.set(key, [...reply]);
+    const queue = queues.get(key)!;
+    return queue.length > 1 ? queue.shift()! : queue[0]!;
+  };
   const fetch = async (input: string | URL | Request, init: RequestInit = {}) => {
     const url = String(input);
     requests.push({ url, init });
     const reply = url.startsWith('https://pipelines.')
-      ? (oidc ?? { status: 200, body: { value: 'github-jwt' } })
+      ? next('oidc', oidc, { status: 200, body: { value: 'github-jwt' } })
       : url.startsWith('https://sts.')
-        ? (sts ?? { status: 200, body: { access_token: 'federated-token' } })
-        : (impersonation ?? { status: 200, body: { accessToken: 'sa-token', expireTime: '2026-10-19T00:00:00Z' } });
+        ? next('sts', sts, { status: 200, body: { access_token: 'federated-token' } })
+        : next('impersonation', impersonation, {
+            status: 200,
+            body: { accessToken: 'sa-token', expireTime: '2026-10-19T00:00:00Z' },
+          });
+    if (reply instanceof Error) throw reply;
     return new Response(JSON.stringify(reply.body), { status: reply.status });
   };
   return { fetch: fetch as typeof globalThis.fetch, requests };
 };
 
+/** Runs `verifyCredentials` with retry delays on fake timers. */
+const verify = async (fetch: typeof globalThis.fetch, signal?: AbortSignal) => {
+  const pending = verifyCredentials(config(), { fetch, signal }).catch((error: unknown) => error);
+  await vi.runAllTimersAsync();
+  return pending;
+};
+
 describe('verifyCredentials', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('exchanges the GitHub token and impersonates the service account', async () => {
     const { fetch, requests } = backend();
     await verifyCredentials(config(), { fetch });
@@ -92,7 +128,7 @@ describe('verifyCredentials', () => {
 
   const failsWith = async (replies: Parameters<typeof backend>[0], expected: object) => {
     const { fetch } = backend(replies);
-    const error = await verifyCredentials(config(), { fetch }).catch((e: unknown) => e);
+    const error = await verify(fetch);
     expect(error).toMatchObject({ code: 'VERIFY_FAILED', ...expected });
     expect(JSON.stringify({ ...(error as object), message: (error as Error).message })).not.toMatch(
       /github-jwt|federated-token|request-token/,
@@ -185,10 +221,70 @@ describe('verifyCredentials', () => {
     );
   });
 
-  it('passes the abort signal to every request', async () => {
+  it('gives each request a timeout that the caller can also abort', async () => {
     const controller = new AbortController();
     const { fetch, requests } = backend();
-    await verifyCredentials(config() as ExternalAccountConfig, { fetch, signal: controller.signal });
-    expect(requests.every((r) => r.init.signal === controller.signal)).toBe(true);
+    expect(await verify(fetch, controller.signal)).toBeUndefined();
+    expect(requests).toHaveLength(3);
+    for (const { init } of requests) {
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+      expect(init.signal).not.toBe(controller.signal);
+    }
+    controller.abort();
+    expect(requests.every((r) => r.init.signal!.aborted)).toBe(true);
+  });
+
+  it('retries network errors, timeouts, 429, and 5xx twice', async () => {
+    const timeout = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    const { fetch, requests } = backend({
+      oidc: [new TypeError('fetch failed') as unknown as Reply, { status: 200, body: { value: 'github-jwt' } }],
+      sts: [{ status: 503, body: {} }, timeout as unknown as Reply, { status: 200, body: { access_token: 'x' } }],
+      impersonation: [
+        { status: 429, body: {} },
+        { status: 200, body: { accessToken: 'sa-token' } },
+      ],
+    });
+    expect(await verify(fetch)).toBeUndefined();
+    expect(requests.map((r) => new URL(r.url).host)).toEqual([
+      'pipelines.actions.githubusercontent.com',
+      'pipelines.actions.githubusercontent.com',
+      'sts.googleapis.com',
+      'sts.googleapis.com',
+      'sts.googleapis.com',
+      'iamcredentials.googleapis.com',
+      'iamcredentials.googleapis.com',
+    ]);
+  });
+
+  it('does not retry other answers', async () => {
+    const { fetch, requests } = backend({ impersonation: { status: 403, body: {} } });
+    await verify(fetch);
+    expect(requests).toHaveLength(3);
+  });
+
+  it('reports the stage when retries run out', async () => {
+    const { fetch, requests } = backend({ sts: new TypeError('fetch failed') });
+    const error = await verify(fetch);
+    expect(error).toMatchObject({
+      code: 'VERIFY_FAILED',
+      message: "Couldn't reach Google STS (fetch failed).",
+      fix: 'Re-run the job.',
+      details: { stage: 'sts', status: 0 },
+    });
+    expect(requests).toHaveLength(4);
+
+    const busy = backend({ sts: { status: 503, body: {} } });
+    expect(await verify(busy.fetch)).toMatchObject({ details: { stage: 'sts', status: 503 } });
+    expect(busy.requests).toHaveLength(4);
+  });
+
+  it('stops retrying when aborted', async () => {
+    const controller = new AbortController();
+    const { fetch, requests } = backend({ sts: { status: 503, body: {} } });
+    const pending = verifyCredentials(config(), { fetch, signal: controller.signal }).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    expect(await pending).toMatchObject({ name: 'AbortError' });
+    expect(requests).toHaveLength(2);
   });
 });
