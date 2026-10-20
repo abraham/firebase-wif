@@ -51,9 +51,12 @@ describe('createCore', () => {
     const { core, stdout } = await setup({ STATE_credentials_path: '/tmp/x.json' });
     core.setSecret('a%b\nc');
     core.info('hello');
+    core.notice('note\nthis');
     core.warning('careful\nnow');
     core.error('broke');
-    expect(stdout()).toBe('::add-mask::a%25b%0Ac\nhello\n::warning::careful%0Anow\n::error::broke\n');
+    expect(stdout()).toBe(
+      '::add-mask::a%25b%0Ac\nhello\n::notice::note%0Athis\n::warning::careful%0Anow\n::error::broke\n',
+    );
     expect(core.getState('credentials_path')).toBe('/tmp/x.json');
     expect(core.getState('missing')).toBe('');
   });

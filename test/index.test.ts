@@ -198,6 +198,7 @@ describe('exports', () => {
       'FirebaseWifError',
       'createCredentialsConfig',
       'isFirebaseWifError',
+      'parseProviderName',
       'verifyCredentials',
     ]);
     expect(await keys(import('../src/gh.js'))).toEqual(['ghCliClient']);

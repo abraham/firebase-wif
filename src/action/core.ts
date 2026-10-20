@@ -13,6 +13,7 @@ export interface ActionCore {
   saveState(name: string, value: string): void;
   getState(name: string): string;
   info(message: string): void;
+  notice(message: string): void;
   warning(message: string): void;
   error(message: string): void;
 }
@@ -57,6 +58,7 @@ export const createCore = ({
     saveState: (name, value) => fileCommand('GITHUB_STATE', name, value),
     getState: (name) => env[`STATE_${name}`] ?? '',
     info: (message) => stdout(`${message}${EOL}`),
+    notice: (message) => stdout(`::notice::${escapeData(message)}${EOL}`),
     warning: (message) => stdout(`::warning::${escapeData(message)}${EOL}`),
     error: (message) => stdout(`::error::${escapeData(message)}${EOL}`),
   };

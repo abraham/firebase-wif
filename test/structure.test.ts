@@ -31,4 +31,16 @@ describe('test layout', () => {
     }
     expect(internal).toEqual([]);
   });
+
+  it('builds the Action only on /credentials', async () => {
+    const files = (await readdir(join(root, 'src', 'action'))).filter((file) => file.endsWith('.ts'));
+    const internal = [];
+    for (const file of files) {
+      const text = await readFile(join(root, 'src', 'action', file), 'utf8');
+      for (const [, specifier] of text.matchAll(/from '([^']+)'/g)) {
+        if (specifier!.startsWith('../') && specifier !== '../credentials.js') internal.push(`${file}: ${specifier}`);
+      }
+    }
+    expect(internal).toEqual([]);
+  });
 });
