@@ -82,7 +82,7 @@ It runs in a container, so pass the credentials JSON instead of a file path:
   with:
     workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
     service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
-- uses: w9jds/firebase-action@v15
+- uses: w9jds/firebase-action@v15.34.0
   with:
     args: deploy --only hosting
   env:
