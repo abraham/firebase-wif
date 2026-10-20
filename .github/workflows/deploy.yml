@@ -25,13 +25,13 @@ jobs:
       # One preview channel per run and example, so concurrent deploys don't overwrite each other.
       CHANNEL: demo-${{ github.run_number }}-${{ matrix.example }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version-file: .nvmrc
       # The action at this commit, rather than a released tag.
       - id: wif
-        uses: ./
+        uses: $/
         with:
           workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
           service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
@@ -42,7 +42,7 @@ jobs:
         run: npx --yes firebase-tools hosting:channel:deploy "$CHANNEL" --expires 1h --non-interactive
 
       - if: matrix.example == 'action-hosting-deploy'
-        uses: FirebaseExtended/action-hosting-deploy@v0
+        uses: FirebaseExtended/action-hosting-deploy@v0.11.0
         with:
           firebaseServiceAccount: ${{ steps.wif.outputs.credentials_json }}
           projectId: ${{ steps.wif.outputs.project_id }}
