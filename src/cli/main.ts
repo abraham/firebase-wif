@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 import {
@@ -47,6 +48,7 @@ Options:
   --json                        Print JSON
   --cwd <dir>                   Directory to look for firebase.json and the git remote
   -h, --help                    Show this help
+  --version                     Show the version
 
 Setup options:
   --dry-run                     Print the plan without changing anything
@@ -65,10 +67,12 @@ export interface CliDeps {
   githubClient?: () => Promise<GitHubClient>;
   /** Whether prompts can be shown; defaults to stdin and stdout being terminals. */
   interactive?: boolean;
-  prompt?: (question: string) => Promise<boolean>;
+  prompt?: (question: string, signal?: AbortSignal) => Promise<boolean>;
+  /** Aborted on Ctrl-C. */
+  signal?: AbortSignal;
 }
 
-export const EXIT = { ok: 0, failed: 1, usage: 2, credentials: 3 } as const;
+export const EXIT = { ok: 0, failed: 1, usage: 2, credentials: 3, interrupted: 130 } as const;
 
 const NEXT_STEPS =
   'IAM changes can take a few minutes to take effect. Workflow examples: https://github.com/abraham/firebase-wif#usage\n';
@@ -89,14 +93,41 @@ const exitFor = (error: unknown): number => {
   }
 };
 
-const askOnTerminal = async (question: string): Promise<boolean> => {
+const askOnTerminal = async (question: string, signal?: AbortSignal): Promise<boolean> => {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
+  // In raw mode, Ctrl-C reaches readline as a key instead of a signal.
+  rl.on('SIGINT', () => process.emit('SIGINT'));
   try {
-    return /^y(es)?$/i.test((await rl.question(`${question} [y/N] `)).trim());
+    return /^y(es)?$/i.test((await rl.question(`${question} [y/N] `, { signal })).trim());
   } finally {
     rl.close();
   }
 };
+
+const OPTIONS = {
+  project: { type: 'string' },
+  'all-aliases': { type: 'boolean' },
+  repo: { type: 'string' },
+  pool: { type: 'string' },
+  provider: { type: 'string' },
+  'service-account': { type: 'string' },
+  preset: { type: 'string', multiple: true },
+  role: { type: 'string', multiple: true },
+  'runtime-service-account': { type: 'string', multiple: true },
+  environment: { type: 'string' },
+  'no-environment': { type: 'boolean' },
+  'any-branch': { type: 'boolean' },
+  branch: { type: 'string' },
+  'variable-prefix': { type: 'string' },
+  json: { type: 'boolean' },
+  cwd: { type: 'string' },
+  'dry-run': { type: 'boolean' },
+  yes: { type: 'boolean', short: 'y' },
+  adopt: { type: 'boolean' },
+  prune: { type: 'boolean' },
+  help: { type: 'boolean', short: 'h' },
+  version: { type: 'boolean' },
+} as const;
 
 /** Runs the CLI and returns its exit code. */
 export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> => {
@@ -104,44 +135,28 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
   const stdout = deps.stdout ?? ((text: string) => process.stdout.write(text));
   const stderr = deps.stderr ?? ((text: string) => process.stderr.write(text));
 
+  // --help and --version win over every other error, so read them leniently first.
+  const lenient = parseArgs({ args: argv, allowPositionals: true, strict: false, options: OPTIONS }).values;
+  if (lenient.help) {
+    stdout(USAGE);
+    return EXIT.ok;
+  }
+  if (lenient.version) {
+    const { version } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as {
+      version: string;
+    };
+    stdout(`${version}\n`);
+    return EXIT.ok;
+  }
+
   let parsed;
   try {
-    parsed = parseArgs({
-      args: argv,
-      allowPositionals: true,
-      options: {
-        project: { type: 'string' },
-        'all-aliases': { type: 'boolean' },
-        repo: { type: 'string' },
-        pool: { type: 'string' },
-        provider: { type: 'string' },
-        'service-account': { type: 'string' },
-        preset: { type: 'string', multiple: true },
-        role: { type: 'string', multiple: true },
-        'runtime-service-account': { type: 'string', multiple: true },
-        environment: { type: 'string' },
-        'no-environment': { type: 'boolean' },
-        'any-branch': { type: 'boolean' },
-        branch: { type: 'string' },
-        'variable-prefix': { type: 'string' },
-        json: { type: 'boolean' },
-        cwd: { type: 'string' },
-        'dry-run': { type: 'boolean' },
-        yes: { type: 'boolean', short: 'y' },
-        adopt: { type: 'boolean' },
-        prune: { type: 'boolean' },
-        help: { type: 'boolean', short: 'h' },
-      },
-    });
+    parsed = parseArgs({ args: argv, allowPositionals: true, options: OPTIONS });
   } catch (error) {
     stderr(`${(error as Error).message}\n\n${USAGE}`);
     return EXIT.usage;
   }
   const { values, positionals } = parsed;
-  if (values.help) {
-    stdout(USAGE);
-    return EXIT.ok;
-  }
 
   const command = positionals[0] ?? 'status';
   if (!['status', 'setup'].includes(command) || positionals.length > 1) {
@@ -168,6 +183,10 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
   };
 
   const fail = (error: unknown, code: number) => {
+    if (deps.signal?.aborted) {
+      stderr('Interrupted.\n');
+      return EXIT.interrupted;
+    }
     if (!(error instanceof FirebaseWifError)) throw error;
     if (values.json) {
       emit({ error: { code: error.code, message: error.message, fix: error.fix } });
@@ -223,7 +242,12 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
 
     const prefix = values['variable-prefix'] ?? DEFAULTS.variablePrefix;
     const interactive = (deps.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY)) && !values.json;
-    const ask = deps.prompt ?? askOnTerminal;
+    const prompt = deps.prompt ?? askOnTerminal;
+    const ask = async (question: string) => {
+      const answer = await prompt(question, deps.signal);
+      deps.signal?.throwIfAborted();
+      return answer;
+    };
     // Later aliases reuse the first one's provider and service account (docs/multi-project.md).
     let home: Options['home'];
     let worst: number = EXIT.ok;
@@ -252,6 +276,7 @@ export const main = async (argv: string[], deps: CliDeps = {}): Promise<number> 
           ? false
           : { name: values.environment ?? DEFAULTS.environment, branch: values['any-branch'] ? false : values.branch },
         local: resolved.local,
+        signal: deps.signal,
         ...(home ? { home } : {}),
       };
 

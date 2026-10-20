@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -128,6 +128,18 @@ describe('firebase-wif status', () => {
     expect((await cli(['--help'], fakes)).code).toBe(0);
   });
 
+  it('prints help and the version before any other error', async () => {
+    const fakes = createConfiguredFakes();
+    const help = await cli(['setup', '--bogus', '--help'], fakes);
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain('Usage: firebase-wif');
+    expect(help.stderr).toBe('');
+
+    const { version } = JSON.parse(await readFile(join(import.meta.dirname, '../../package.json'), 'utf8'));
+    const printed = await cli(['deploy', '--version'], fakes);
+    expect(printed).toEqual({ code: 0, stdout: `${version}\n`, stderr: '' });
+  });
+
   it('exits 3 without Google credentials', async () => {
     const { code, stderr } = await cli([], createConfiguredFakes(), {
       googleClient: async () => {
@@ -218,6 +230,36 @@ describe('firebase-wif setup', () => {
 
     const accepted = await cli(['setup'], brokenFakes(), { interactive: true, prompt: async () => true });
     expect(accepted.code).toBe(0);
+  });
+
+  it('stops with exit 130 when interrupted at a prompt', async () => {
+    const fakes = brokenFakes();
+    const controller = new AbortController();
+    const { code, stderr } = await cli(['setup'], fakes, {
+      interactive: true,
+      signal: controller.signal,
+      prompt: async () => (controller.abort(), true),
+    });
+    expect(code).toBe(130);
+    expect(stderr).toBe('Interrupted.\n');
+    expect(writes(fakes)).toEqual([]);
+  });
+
+  it('stops writing with exit 130 when interrupted while applying', async () => {
+    const fakes = brokenFakes();
+    const controller = new AbortController();
+    const request = fakes.google.request.bind(fakes.google);
+    fakes.google.request = async <T>(method: string, url: string, body?: unknown): Promise<T> => {
+      const result = await request<T>(method, url, body);
+      if (url.includes('workloadIdentityPools?')) controller.abort();
+      return result;
+    };
+    const { code, stdout, stderr } = await cli(['setup', '--yes'], fakes, { signal: controller.signal });
+    expect(code).toBe(130);
+    expect(stderr).toBe('Interrupted.\n');
+    expect(stdout).toContain('  ✓ create workload identity pool github\n');
+    expect(stdout).not.toContain('✓ create provider');
+    expect(writes(fakes).map((c) => c.url)).toEqual([expect.stringContaining('workloadIdentityPools?')]);
   });
 
   it('asks before adopting a legacy setup unless --adopt is passed', async () => {
