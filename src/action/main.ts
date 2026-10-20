@@ -9,11 +9,11 @@ const MISSING_OIDC_TOKEN =
   'guard the job with `if: github.event.pull_request.head.repo.full_name == github.repository`.';
 
 export interface ActionDeps {
-  env?: NodeJS.ProcessEnv;
-  stdout?: (text: string) => void;
-  fetch?: typeof globalThis.fetch;
-  cwd?: string;
-  randomId?: () => string;
+  env?: NodeJS.ProcessEnv | undefined;
+  stdout?: ((text: string) => void) | undefined;
+  fetch?: typeof globalThis.fetch | undefined;
+  cwd?: string | undefined;
+  randomId?: (() => string) | undefined;
 }
 
 const isInside = (child: string, parent: string) => {

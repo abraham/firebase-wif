@@ -26,7 +26,7 @@ export const CREDENTIALS_PATH_STATE = 'credentials_path';
 export const createCore = ({
   env = process.env,
   stdout = (text: string) => void process.stdout.write(text),
-}: { env?: NodeJS.ProcessEnv; stdout?: (text: string) => void } = {}): ActionCore => {
+}: { env?: NodeJS.ProcessEnv | undefined; stdout?: ((text: string) => void) | undefined } = {}): ActionCore => {
   const fileCommand = (variable: 'GITHUB_OUTPUT' | 'GITHUB_ENV' | 'GITHUB_STATE', name: string, value: string) => {
     const file = env[variable];
     if (!file) throw new Error(`${variable} is not set; this must run inside GitHub Actions.`);

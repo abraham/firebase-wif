@@ -18,21 +18,21 @@ import { createFakeGitHub, type FakeGitHub } from './fake-github.js';
 import { createFakeGoogle, type FakeGoogle } from './fake-google.js';
 
 export interface ConfiguredFakesOptions {
-  projectId?: string;
-  projectNumber?: string;
-  repo?: string;
-  repoId?: number;
-  ownerId?: number;
-  defaultBranch?: string;
-  presets?: PresetName[];
-  firebaseJson?: Record<string, unknown>;
+  projectId?: string | undefined;
+  projectNumber?: string | undefined;
+  repo?: string | undefined;
+  repoId?: number | undefined;
+  ownerId?: number | undefined;
+  defaultBranch?: string | undefined;
+  presets?: readonly PresetName[] | undefined;
+  firebaseJson?: Record<string, unknown> | undefined;
 }
 
 export interface ConfiguredFakes {
   google: FakeGoogle;
   github: FakeGitHub;
   /** Pass to `status`/`plan`: `{ ...fakes.options, google: fakes.google, github: fakes.github }`. */
-  options: { projectId: string; repo: string; presets: PresetName[] };
+  options: { projectId: string; repo: string; presets: readonly PresetName[] };
   names: { pool: string; provider: string; serviceAccount: string; principal: string };
 }
 

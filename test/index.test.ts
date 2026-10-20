@@ -82,7 +82,7 @@ describe('library contract', () => {
     expect(reads).toEqual([]);
   });
 
-  it('only reads the filesystem in context resolution', async () => {
+  it('only touches the filesystem and processes in core/discovery', async () => {
     const dir = join(import.meta.dirname, '../src');
     // The CLI and the Action aren't part of the library; they do their own I/O by design.
     const files = (await readdir(dir, { recursive: true })).filter(
@@ -90,9 +90,9 @@ describe('library contract', () => {
     );
     const readers = [];
     for (const file of files) {
-      if (/from 'node:fs/.test(await readFile(join(dir, file), 'utf8'))) readers.push(file);
+      if (/from 'node:(fs|child_process)/.test(await readFile(join(dir, file), 'utf8'))) readers.push(file);
     }
-    expect(readers).toEqual(['core/context.ts']);
+    expect(readers.sort()).toEqual(['core/discovery/exec.ts', 'core/discovery/files.ts', 'gh.ts']);
   });
 
   it('stops when the signal aborts', async () => {
@@ -191,6 +191,7 @@ describe('exports', () => {
       'PRESET_NAMES',
       'SERVICE_ACCOUNT_USER_ROLE',
       'apisFor',
+      'isPresetName',
       'resolvePresets',
       'rolesFor',
     ]);

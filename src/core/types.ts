@@ -17,11 +17,11 @@ export type PresetName = 'hosting' | 'firestore' | 'storage' | 'functions';
 
 /** Files read by `resolveContext`; the engine never touches the filesystem itself. */
 export interface LocalFiles {
-  firebaseJson?: Record<string, unknown>;
-  firebaserc?: { projects?: Record<string, string> };
-  gitignore?: string;
+  firebaseJson?: Record<string, unknown> | undefined;
+  firebaserc?: { projects?: Record<string, string> | undefined } | undefined;
+  gitignore?: string | undefined;
   /** Workflow file contents keyed by path, like `.github/workflows/deploy.yml`. */
-  workflows?: Record<string, string>;
+  workflows?: Record<string, string> | undefined;
 }
 
 export interface AdoptCandidate {
@@ -34,29 +34,29 @@ export interface Options {
   projectId: string;
   /** `owner/name` */
   repo: string;
-  google?: GoogleAuth;
+  google?: GoogleAuth | undefined;
   /** `false` skips GitHub resources; the repo is still looked up without credentials. */
-  github?: GitHubAuth | false;
-  presets?: PresetName[] | 'auto';
-  firebaseJson?: Record<string, unknown>;
-  roles?: string[];
-  runtimeServiceAccounts?: string[];
-  names?: { pool?: string; provider?: string; serviceAccount?: string };
-  variables?: { provider: string; serviceAccount: string } | false;
+  github?: GitHubAuth | false | undefined;
+  presets?: readonly PresetName[] | 'auto' | undefined;
+  firebaseJson?: Record<string, unknown> | undefined;
+  roles?: readonly string[] | undefined;
+  runtimeServiceAccounts?: readonly string[] | undefined;
+  names?: { pool?: string | undefined; provider?: string | undefined; serviceAccount?: string | undefined } | undefined;
+  variables?: { provider: string; serviceAccount: string } | false | undefined;
   /**
    * An existing provider resource name and SA email to use instead of the ones the repo variables
    * point at. When they're in another project, only that project's APIs and roles are reconciled.
    */
-  home?: { provider: string; serviceAccount: string };
+  home?: { provider: string; serviceAccount: string } | undefined;
   /** `branch` defaults to the repo's default branch; `false` lets any branch deploy. */
-  environment?: { name: string; branch?: string | false } | false;
-  prune?: boolean;
+  environment?: { name: string; branch?: string | false | undefined } | false | undefined;
+  prune?: boolean | undefined;
   /** Reuse a setup found through legacy repo variables (default `false`). A function decides per candidate. */
-  adopt?: boolean | ((candidate: AdoptCandidate) => boolean | Promise<boolean>);
-  local?: LocalFiles;
-  onEvent?: (event: ProgressEvent) => void;
-  signal?: AbortSignal;
-  sleep?: (ms: number) => Promise<void>;
+  adopt?: boolean | ((candidate: AdoptCandidate) => boolean | Promise<boolean>) | undefined;
+  local?: LocalFiles | undefined;
+  onEvent?: ((event: ProgressEvent) => void) | undefined;
+  signal?: AbortSignal | undefined;
+  sleep?: ((ms: number) => Promise<void>) | undefined;
 }
 
 export interface Context {
@@ -159,7 +159,7 @@ export interface ApplyResult {
 
 export interface SetupOptions extends Options {
   /** Called with the plan before anything is written; return `false` to cancel. Default: always apply. */
-  confirm?: (plan: Plan) => boolean | Promise<boolean>;
+  confirm?: ((plan: Plan) => boolean | Promise<boolean>) | undefined;
 }
 
 export type SetupResult = (ApplyResult & { cancelled: false }) | { cancelled: true; plan: Plan };

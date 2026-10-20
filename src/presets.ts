@@ -51,15 +51,22 @@ export const PRESETS: Readonly<Record<PresetName, Preset>> = {
 export const SERVICE_ACCOUNT_USER_ROLE = 'roles/iam.serviceAccountUser';
 
 /** Presets for the products configured in `firebase.json`, or `hosting` when there are none. */
-export const resolvePresets = (firebaseJson?: Record<string, unknown>): PresetName[] => {
+export const resolvePresets = (firebaseJson?: Record<string, unknown> | undefined): PresetName[] => {
   const found = PRESET_NAMES.filter((name) => firebaseJson && name in firebaseJson);
   return found.length ? found : ['hosting'];
 };
 
+export const isPresetName = (name: string): name is PresetName => (PRESET_NAMES as readonly string[]).includes(name);
+
 const unique = (values: Iterable<string>): string[] => [...new Set(values)].sort();
 
-export const rolesFor = ({ presets, roles = [] }: { presets: PresetName[]; roles?: string[] }): string[] =>
-  unique([...presets.flatMap((name) => PRESETS[name].roles), ...roles]);
+export const rolesFor = ({
+  presets,
+  roles = [],
+}: {
+  presets: readonly PresetName[];
+  roles?: readonly string[] | undefined;
+}): string[] => unique([...presets.flatMap((name) => PRESETS[name].roles), ...roles]);
 
-export const apisFor = (presets: PresetName[]): string[] =>
+export const apisFor = (presets: readonly PresetName[]): string[] =>
   unique([...BASE_APIS, ...presets.flatMap((name) => PRESETS[name].apis)]);

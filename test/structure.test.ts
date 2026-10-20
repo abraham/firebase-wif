@@ -1,5 +1,5 @@
 import { access, readdir, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const root = join(import.meta.dirname, '..');
@@ -42,5 +42,36 @@ describe('test layout', () => {
       }
     }
     expect(internal).toEqual([]);
+  });
+
+  it('keeps core layers pointing one way', async () => {
+    // Files directly in src/core are the shared kernel; each folder is a layer.
+    const allowed: Record<string, string[]> = {
+      kernel: ['kernel'],
+      discovery: ['kernel', 'discovery'],
+      io: ['kernel', 'io'],
+      resources: ['kernel', 'io', 'resources'],
+      checks: ['kernel', 'io', 'checks'],
+      engine: ['kernel', 'discovery', 'io', 'resources', 'checks', 'engine'],
+    };
+    const core = join(root, 'src', 'core');
+    const layerOf = (path: string) => {
+      const parts = relative(core, path).split(sep);
+      return parts.length > 1 ? parts[0]! : 'kernel';
+    };
+    const files = (await readdir(core, { recursive: true })).filter((file) => file.endsWith('.ts'));
+    const violations = [];
+    for (const file of files) {
+      const path = join(core, file);
+      const from = layerOf(path);
+      expect(allowed[from], `unknown layer ${from}`).toBeDefined();
+      for (const [, specifier] of (await readFile(path, 'utf8')).matchAll(/from '(\.[^']+)'/g)) {
+        const target = resolve(dirname(path), specifier!);
+        if (relative(core, target).startsWith('..')) continue;
+        const to = layerOf(target);
+        if (!allowed[from]!.includes(to)) violations.push(`${file} (${from}) imports ${specifier} (${to})`);
+      }
+    }
+    expect(violations).toEqual([]);
   });
 });

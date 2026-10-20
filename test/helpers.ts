@@ -1,6 +1,11 @@
-import { createMemo, type Read, type RepoResource, type Runtime } from '../src/core/runtime.js';
+import { createMemo, type Read, type RepoResource, type Runtime } from '../src/core/io/reads.js';
+import type { Outcome } from '../src/core/resources/resource.js';
 import { status } from '../src/index.js';
 import { createConfiguredFakes, type ConfiguredFakes } from '../src/testing/index.js';
+
+/** A resource outcome as `action: description` lines, or just its kind when it has no changes. */
+export const actions = (outcome: Outcome) =>
+  outcome.kind === 'drift' ? outcome.changes.map((c) => `${c.action}: ${c.description}`) : outcome.kind;
 
 /** A runtime for a fully set up repo and project; mutate the fakes afterwards to break things. */
 export const runtimeFor = async (

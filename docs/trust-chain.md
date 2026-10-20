@@ -1,7 +1,7 @@
 # Trust chain
 
-Code: `src/core/naming.ts`, `src/core/policy.ts`, `src/core/resources.ts`
-Tests: `test/core/naming.test.ts`, `test/core/policy.test.ts`, `test/core/resources.test.ts`
+Code: `src/core/naming.ts`, `src/core/policy.ts`, `src/core/resources/`
+Tests: `test/core/naming.test.ts`, `test/core/policy.test.ts`, `test/core/resources/`
 
 The trust chain is everything that has to exist for a GitHub Actions job in one repository to act as a Google Cloud service account: the APIs, a workload identity pool and provider, a service account with deploy roles, a binding that lets the repository act as it, and the repo variables and environment on the GitHub side. This spec defines what each piece looks like when it's correct. How `setup` gets there is in `reconcile.md`.
 
@@ -122,4 +122,4 @@ Every name is validated before it's used in any request, and an invalid one fail
 
 - `test/core/naming.test.ts` covers every validation rule, the default names, resource name parsing, and the principal set.
 - `test/core/policy.test.ts` covers the condition classification table, and adding and removing members without touching conditional bindings or other members.
-- `test/core/resources.test.ts` evaluates each resource against the `/testing` fakes in its correct and broken states.
+- `test/core/resources/` evaluates each resource against the `/testing` fakes in its correct and broken states.

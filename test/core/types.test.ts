@@ -1,5 +1,5 @@
 import { describe, expectTypeOf, it } from 'vitest';
-import type { ResolvedContext } from '../../src/core/context.js';
+import type { ResolvedContext } from '../../src/core/discovery/context.js';
 import { isFirebaseWifError, type ApplyFailure } from '../../src/core/errors.js';
 import type {
   Change,
@@ -10,6 +10,7 @@ import type {
   GoogleAuth,
   GoogleClient,
   Options,
+  PresetName,
   ProgressEvent,
   ResourceId,
   SetupResult,
@@ -35,6 +36,17 @@ describe('types', () => {
       github: false as const,
       environment: false as const,
       variables: false as const,
+    }).toExtend<Options>();
+  });
+
+  it('accepts readonly arrays and explicit undefined in options', () => {
+    expectTypeOf({
+      projectId: 'p',
+      repo: 'o/r',
+      presets: ['hosting'] as readonly PresetName[],
+      roles: [] as readonly string[],
+      google: undefined,
+      signal: undefined,
     }).toExtend<Options>();
   });
 

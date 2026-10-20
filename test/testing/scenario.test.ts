@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { status } from '../../src/core/engine.js';
+import { status } from '../../src/core/engine/engine.js';
 import type { PresetName } from '../../src/core/types.js';
 import { createConfiguredFakes } from '../../src/testing/scenario.js';
 

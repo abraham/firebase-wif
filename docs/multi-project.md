@@ -1,7 +1,7 @@
 # Multiple projects
 
-Code: `src/core/engine.ts`, `src/core/runtime.ts`, `src/core/resources.ts`, `src/core/context.ts`, `src/cli/main.ts`
-Tests: `test/core/engine.test.ts`, `test/core/context.test.ts`, `test/cli/main.test.ts`
+Code: `src/core/engine/`, `src/core/discovery/context.ts`, `src/cli/main.ts`
+Tests: `test/core/engine/engine.test.ts`, `test/core/engine/chain.test.ts`, `test/core/discovery/context.test.ts`, `test/cli/main.test.ts`
 
 Firebase repositories often deploy to several projects, such as `staging` and `prod` aliases in `.firebaserc`. One trust chain can serve all of them, because IAM roles work across projects: the pool, provider, and service account live in one project, the home project, and the other projects only grant deploy roles to that service account.
 
@@ -48,6 +48,6 @@ A project that can't be checked or set up stops the run, because later projects 
 
 ## How it's tested
 
-- `test/core/engine.test.ts` checks a cross-project status and setup (only APIs and roles change; no second pool, provider, or service account; variables untouched; a second plan is empty), the `home` option with and without GitHub, explicit names starting an independent chain, an invalid `home`, and functions runtime grants in another project.
-- `test/core/context.test.ts` checks alias listing order and deduplication.
+- `test/core/engine/engine.test.ts` checks a cross-project status and setup (only APIs and roles change; no second pool, provider, or service account; variables untouched; a second plan is empty), the `home` option with and without GitHub, explicit names starting an independent chain, an invalid `home`, and functions runtime grants in another project.
+- `test/core/discovery/context.test.ts` checks alias listing order and deduplication.
 - `test/cli/main.test.ts` checks `--all-aliases` in text and JSON, setting up the home project first, stopping on an error, and its usage errors.

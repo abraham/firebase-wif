@@ -29,7 +29,7 @@ const runGh: GhRunner = (args, input) =>
 const GH_AUTH_EXIT_CODE = 4;
 
 /** A GitHub client that sends every request through `gh api`, for tools that already rely on a signed-in gh. */
-export const ghCliClient = ({ run = runGh }: { run?: GhRunner } = {}): GitHubClient => ({
+export const ghCliClient = ({ run = runGh }: { run?: GhRunner | undefined } = {}): GitHubClient => ({
   async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const args = [
       'api',
