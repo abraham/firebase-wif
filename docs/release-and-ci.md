@@ -33,9 +33,9 @@ Quality checks aren't repeated: they're required to land in `main`. The npm pack
 | --------------- | ---------------------------- | --------------------------------------------------------------------------------------- |
 | `test`          | Node 22, 24, and 26          | `npm ci`, the Prettier check, typecheck, tests, and the library build                   |
 | `action-bundle` | The Node version in `.nvmrc` | Rebuilds `dist/action/` and fails if it differs from the committed bundle               |
-| `success`       |                              | Passes only when every other job succeeded, including when one was cancelled or skipped |
+| `ci-success`    |                              | Passes only when every other job succeeded, including when one was cancelled or skipped |
 
-`success` is the only required check for `main`, so the list of jobs can change without editing branch protection. It always runs, because GitHub counts a skipped required check as passing.
+`ci-success` and `deploy-success` (below) are the required checks for `main`, so the list of jobs can change without editing branch protection. They always run, because GitHub counts a skipped required check as passing.
 
 Conventions the checks enforce:
 
@@ -52,6 +52,7 @@ Conventions the checks enforce:
 - It uses the Action at the commit being tested (`uses: ./`), not a released tag.
 - Three jobs run in parallel, one per README example: `npx firebase-tools`, `FirebaseExtended/action-hosting-deploy`, and `w9jds/firebase-action`. Each deploys to its own preview channel, `demo-<run number>-<example>`, which expires after an hour, so runs never interfere and the live site is never touched.
 - It runs in the `test` environment, which allows any branch, set up with `firebase-wif setup --environment test --any-branch`.
+- `deploy-success` passes only when every deploy succeeded. Deploys skipped for a fork pull request count as passing; any other skip, cancellation, or failure fails it.
 
 ## Dependency updates
 

@@ -44,7 +44,7 @@ jobs:
       - name: Check that dist/action matches a fresh build
         run: git diff --exit-code -- dist/action
 
-  success:
+  ci-success:
     needs: [test, action-bundle]
     # Run even when a dependency fails, since a skipped required check counts as passing.
     if: always()
