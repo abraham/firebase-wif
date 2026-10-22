@@ -23,6 +23,9 @@ Options:
   --no-environment              Skip the GitHub environment
   --branch <name>               Branch allowed to deploy (default: the repo's default branch)
   --any-branch                  Let any branch deploy to the environment
+  --preview-environment <name>  GitHub environment any branch can deploy to, for preview channels
+                                (default: the preview jobs' environment or ${DEFAULTS.previewEnvironment}, when a workflow deploys one)
+  --no-preview-environment      Skip the preview environment
   --variable-prefix <prefix>    Repo variable prefix (default: ${DEFAULTS.variablePrefix})
   --detailed                    Show resource names, emails, role IDs, and check IDs
   --json                        Print JSON
@@ -51,6 +54,8 @@ const OPTIONS = {
   'no-environment': { type: 'boolean' },
   'any-branch': { type: 'boolean' },
   branch: { type: 'string' },
+  'preview-environment': { type: 'string' },
+  'no-preview-environment': { type: 'boolean' },
   'variable-prefix': { type: 'string' },
   detailed: { type: 'boolean' },
   json: { type: 'boolean' },
@@ -81,6 +86,8 @@ export interface CliArgs {
   noEnvironment: boolean;
   branch: string | undefined;
   anyBranch: boolean;
+  previewEnvironment: string | undefined;
+  noPreviewEnvironment: boolean;
   variablePrefix: string;
   detailed: boolean;
   json: boolean;
@@ -121,6 +128,9 @@ export const parseCli = (argv: readonly string[]): ParseResult => {
   const setupOnly = SETUP_ONLY.find((flag) => values[flag]);
   if (command === 'status' && setupOnly) return usageError(`--${setupOnly} only works with setup.\n`);
   if (values['any-branch'] && values.branch) return usageError('Pass either --branch or --any-branch, not both.\n');
+  if (values['preview-environment'] && values['no-preview-environment']) {
+    return usageError('Pass either --preview-environment or --no-preview-environment, not both.\n');
+  }
   if (values['all-aliases'] && values.project) {
     return usageError('Pass either --project or --all-aliases, not both.\n');
   }
@@ -146,6 +156,8 @@ export const parseCli = (argv: readonly string[]): ParseResult => {
       noEnvironment: Boolean(values['no-environment']),
       branch: values.branch,
       anyBranch: Boolean(values['any-branch']),
+      previewEnvironment: values['preview-environment'],
+      noPreviewEnvironment: Boolean(values['no-preview-environment']),
       variablePrefix: values['variable-prefix'] ?? DEFAULTS.variablePrefix,
       detailed: Boolean(values.detailed),
       json: Boolean(values.json),

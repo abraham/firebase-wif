@@ -25,8 +25,33 @@ describe('buildContext', () => {
       serviceAccount: 'github-42@demo-project.iam.gserviceaccount.com',
       homeProjectId: 'demo-project',
       environment: { name: 'production', branch: 'main' },
+      previewEnvironment: false,
       presets: ['hosting'],
     });
+  });
+
+  it('adds a preview environment when a workflow deploys to a preview channel', () => {
+    const preview = (environment = '') =>
+      `on: pull_request\njobs:\n  preview:\n${environment}    steps:\n      - run: npx firebase-tools hosting:channel:deploy pr-1\n`;
+    const local = (text: string) => ({ local: { workflows: { 'preview.yml': text } } });
+    expect(build(local(preview())).previewEnvironment).toEqual({ name: 'preview' });
+    expect(build(local(preview('    environment: pr\n'))).previewEnvironment).toEqual({ name: 'pr' });
+    expect(build(local(preview('    environment: production\n'))).previewEnvironment).toEqual({ name: 'preview' });
+    expect(
+      build({ ...local(preview('    environment: test\n')), environment: { name: 'test', branch: false } })
+        .previewEnvironment,
+    ).toBe(false);
+    expect(build({ ...local(preview()), previewEnvironment: false }).previewEnvironment).toBe(false);
+    expect(
+      build({ ...local('on: push\njobs:\n  d:\n    steps:\n      - run: firebase deploy\n') }).previewEnvironment,
+    ).toBe(false);
+  });
+
+  it('uses a given preview environment', () => {
+    expect(build({ previewEnvironment: { name: 'staging' } }).previewEnvironment).toEqual({ name: 'staging' });
+    expect(() => build({ previewEnvironment: { name: 'production' } })).toThrow(
+      expect.objectContaining({ code: 'INVALID_NAME' }),
+    );
   });
 
   it('follows repo variables in the same project', () => {

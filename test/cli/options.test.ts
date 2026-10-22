@@ -53,6 +53,9 @@ describe('buildOptions', () => {
       environment: { name: 'test', branch: false },
     });
     expect(build(['--no-environment']).environment).toBe(false);
+    expect(build([]).previewEnvironment).toBeUndefined();
+    expect(build(['--preview-environment', 'pr']).previewEnvironment).toEqual({ name: 'pr' });
+    expect(build(['--no-preview-environment']).previewEnvironment).toBe(false);
   });
 
   it('passes the home trust chain only when there is one', () => {

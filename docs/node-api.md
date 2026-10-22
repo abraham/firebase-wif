@@ -51,7 +51,7 @@ Every exported function keeps these rules:
 | `defaultGitHubClient({ env?, exec?, fetch? })`                         | The GitHub credential lookup order. Throws `NO_GITHUB_CREDENTIALS` with `gh auth login` as the fix.                                                                                                                                                                                                                                              |
 | `isFirebaseWifError(error, code?)`                                     | Type guard for a `FirebaseWifError`, optionally with a given code, that narrows `details` to that code's shape.                                                                                                                                                                                                                                  |
 | `SETUP_PERMISSIONS`, `CROSS_PROJECT_PERMISSIONS`                       | The Google Cloud permissions the preflight checks in a home project and in a project that reuses another project's trust chain (see `multi-project.md`).                                                                                                                                                                                         |
-| `DEFAULTS`                                                             | The default names that don't depend on the repository: `{ pool: 'github', environment: 'production', variablePrefix: 'FIREBASE_WIF_' }`.                                                                                                                                                                                                         |
+| `DEFAULTS`                                                             | The default names that don't depend on the repository: `{ pool: 'github', environment: 'production', previewEnvironment: 'preview', variablePrefix: 'FIREBASE_WIF_' }`.                                                                                                                                                                          |
 
 `exec` (type `Exec`) runs a command without a shell and resolves with its stdout. It's how `resolveContext` reads the git remote and the default clients call `gcloud` and `gh`, and tests replace it.
 
@@ -98,6 +98,7 @@ When `google` is omitted, `defaultGoogleClient()` is used; when `github` is omit
 | `variables`              | `FIREBASE_WIF_PROVIDER`, `FIREBASE_WIF_SERVICE_ACCOUNT`       | `{ provider, serviceAccount }` repo variable names, or `false` to not manage variables                                              |
 | `home`                   |                                                               | `{ provider, serviceAccount }` of an existing trust chain to use instead of the one the variables point at (see `multi-project.md`) |
 | `environment`            | `{ name: 'production', branch: <default branch> }`            | `{ name, branch? }`, where `branch: false` lets any branch deploy, or `false` to skip the environment                               |
+| `previewEnvironment`     | detected from `local.workflows`                               | `{ name }` of an environment any branch can deploy to, for preview channels, or `false` to skip it (see `reconcile.md`)             |
 | `prune`                  | `false`                                                       | Remove unrequested project roles from a service account firebase-wif manages                                                        |
 | `adopt`                  | `false`                                                       | Reuse a setup found through legacy repo variables: `true`, or a function `(candidate) => boolean \| Promise<boolean>` that decides  |
 | `local`                  |                                                               | `LocalFiles` from `resolveContext`; enables the local checks and the workflow check                                                 |
@@ -200,6 +201,7 @@ interface Context {
   homeProjectId: string; // differs from projectId when another project holds the trust chain
   variables: { provider: string; serviceAccount: string } | false;
   environment: { name: string; branch: string | false } | false;
+  previewEnvironment: { name: string } | false; // any branch can deploy to it
   presets: PresetName[];
   roles: string[]; // resolved from presets and roles
   apis: string[];

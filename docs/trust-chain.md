@@ -18,6 +18,7 @@ The trust chain is everything that has to exist for a GitHub Actions job in one 
 | Google | Runtime service account user | With the `functions` preset, the deploy service account holds `roles/iam.serviceAccountUser` on each runtime service account       |
 | GitHub | Repo variables               | `<prefix>PROVIDER` and `<prefix>SERVICE_ACCOUNT` hold the provider resource name and the service account email                     |
 | GitHub | Environment                  | Exists, and only the deploy branch can deploy to it (or any branch, when configured)                                               |
+| GitHub | Preview environment          | When a workflow deploys to a preview channel: exists, and any branch can deploy to it                                              |
 
 ## Default names
 
@@ -28,6 +29,7 @@ The trust chain is everything that has to exist for a GitHub Actions job in one 
 | Service account | `github-<repoId>@<projectId>.iam.gserviceaccount.com`, one per repository |
 | Repo variables  | `FIREBASE_WIF_PROVIDER`, `FIREBASE_WIF_SERVICE_ACCOUNT`                   |
 | Environment     | `production`, limited to the repository's default branch                  |
+| Preview         | the environment the preview jobs already use, else `preview`              |
 
 Names use the numeric repository ID so they survive renames, fit Google's length limits, and let several repositories share a project without colliding.
 

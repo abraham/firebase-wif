@@ -3,11 +3,13 @@ import { FirebaseWifError } from './errors.js';
 export const DEFAULT_POOL = 'github';
 export const DEFAULT_VARIABLE_PREFIX = 'FIREBASE_WIF_';
 export const DEFAULT_ENVIRONMENT = 'production';
+export const DEFAULT_PREVIEW_ENVIRONMENT = 'preview';
 
 /** The default names that don't depend on the repository. */
 export const DEFAULTS = {
   pool: DEFAULT_POOL,
   environment: DEFAULT_ENVIRONMENT,
+  previewEnvironment: DEFAULT_PREVIEW_ENVIRONMENT,
   variablePrefix: DEFAULT_VARIABLE_PREFIX,
 } as const;
 export const ISSUER = 'https://token.actions.githubusercontent.com';

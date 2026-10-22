@@ -50,6 +50,11 @@ export interface Options {
   home?: { provider: string; serviceAccount: string } | undefined;
   /** `branch` defaults to the repo's default branch; `false` lets any branch deploy. */
   environment?: { name: string; branch?: string | false | undefined } | false | undefined;
+  /**
+   * An environment any branch can deploy to, for preview channels. By default it's set up only when a
+   * local workflow deploys to a preview channel, named after that job's environment or `preview`.
+   */
+  previewEnvironment?: { name: string } | false | undefined;
   prune?: boolean | undefined;
   /** Reuse a setup found through legacy repo variables (default `false`). A function decides per candidate. */
   adopt?: boolean | ((candidate: AdoptCandidate) => boolean | Promise<boolean>) | undefined;
@@ -74,6 +79,7 @@ export interface Context {
   homeProjectId: string;
   variables: { provider: string; serviceAccount: string } | false;
   environment: { name: string; branch: string | false } | false;
+  previewEnvironment: { name: string } | false;
   presets: PresetName[];
   roles: string[];
   apis: string[];

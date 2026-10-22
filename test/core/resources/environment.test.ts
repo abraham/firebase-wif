@@ -32,6 +32,32 @@ describe('gh.environment', () => {
     expect(actions(await environment.evaluate(rt))).toEqual(['update: limit production to selected branches']);
   });
 
+  it('lets any branch deploy to the preview environment', async () => {
+    const fakes = createConfiguredFakes();
+    const base = await runtimeFor(fakes);
+    const rt = { ...base, ctx: { ...base.ctx, previewEnvironment: { name: 'preview' } } };
+    expect(actions(await environment.evaluate(rt))).toEqual([
+      'create: create environment preview',
+      'set: allow any branch to deploy to preview',
+    ]);
+
+    await environment.apply(rt, undefined as never);
+    expect(env(fakes).preview).toMatchObject({ deployment_branch_policy: null });
+    expect(await environment.evaluate(rt)).toEqual({
+      kind: 'ok',
+      message: 'production only deploys from main; preview allows any branch',
+    });
+
+    env(fakes).preview = {
+      deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
+      branchPolicies: ['main'],
+    };
+    expect(actions(await environment.evaluate(rt))).toEqual(['set: allow any branch to deploy to preview']);
+    expect(actions(await environment.evaluate({ ...rt, ctx: { ...rt.ctx, environment: false } }))).toEqual([
+      'set: allow any branch to deploy to preview',
+    ]);
+  });
+
   it('skips when disabled, unreadable, or without GitHub', async () => {
     const fakes = createConfiguredFakes();
     const rt = await runtimeFor(fakes);

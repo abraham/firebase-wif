@@ -27,7 +27,7 @@ Leave jobs that don't deploy to Firebase alone.
 
 1. **Permissions.** Give the job `id-token: write` and `contents: read`. Job-level `permissions` replace the workflow's, so copy over any other permissions the job relied on (for example `pull-requests: write` for action-hosting-deploy's PR comments, or `checks: write`). Don't add `id-token: write` to jobs that don't deploy.
 2. **Fork guard.** If the workflow runs on `pull_request` or `pull_request_target`, fork pull requests can't get OIDC tokens. Add `if: github.event.pull_request.head.repo.full_name == github.repository` to the job (combine it with any existing `if:` using `&&`). Use `github.event_name != 'pull_request' || ...` when the job also runs on other events.
-3. **Environment.** `setup` creates a `production` environment that only the default branch can deploy to. Add `environment: production` to jobs that deploy live from the default branch. Don't add it to pull request preview jobs, which would be blocked.
+3. **Environment.** `setup` creates a `production` environment that only the default branch can deploy to, and, when a workflow deploys to preview channels, a `preview` environment that any branch can deploy to. Add `environment: production` to jobs that deploy live from the default branch (`firebase deploy`, `w9jds/firebase-action` with `deploy`, or `action-hosting-deploy` with `channelId: live`). Add `environment: preview` to jobs that only deploy to preview channels (`hosting:channel:deploy`, or `action-hosting-deploy` without `channelId: live`); never put them in `production`, which blocks pull request branches. If a preview job already uses another environment, keep it: `setup` uses that one instead of `preview`. Re-running `setup` after adding a preview job creates the `preview` environment.
 4. **Auth step.** Add the Action after `actions/checkout` (and after any build steps) and before the first deploy step. Give it `id: wif` when a later step needs its outputs:
 
    ```yaml
@@ -108,7 +108,7 @@ jobs:
 
 ## Verify
 
-1. Run `npx @abraham/firebase-wif status`. The `gh.workflows` check ("Deploy workflows") should pass; it flags deploy jobs missing `id-token: write`, the fork guard, or an auth step.
+1. Run `npx @abraham/firebase-wif status`. The `gh.workflows` check ("Deploy workflows") should pass; it flags deploy jobs missing `id-token: write`, the fork guard, an auth step, or the right environment. The `gh.environment` check should show the `preview` environment when there's a preview job; if it doesn't exist yet, tell the user to re-run `setup`.
 2. If the deploys now cover more products (Functions, Firestore, Storage), the deploy account needs more roles: `setup` picks them from `firebase.json`, so tell the user to re-run it.
 3. Run `actionlint` on the changed files if it's installed.
 4. Summarize for the user: the files changed, the version pinned, any steps left on `google-github-actions/auth`, and the secrets they can delete after a successful deploy.

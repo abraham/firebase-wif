@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { estimateSub, GOOGLE_SUBJECT_MAX_BYTES } from '../../../src/core/checks/oidc.js';
 
-const params = { repo: 'octo-org/site', repoId: 42, ownerId: 7, branch: 'main', environment: 'production' };
+const params = { repo: 'octo-org/site', repoId: 42, ownerId: 7, branch: 'main', environments: ['production'] };
 
 describe('estimateSub', () => {
   it('uses the default template', () => {
@@ -18,9 +18,17 @@ describe('estimateSub', () => {
   });
 
   it('considers branch and pull request jobs without an environment', () => {
-    expect(estimateSub({ useDefault: true, includeClaimKeys: [] }, { ...params, environment: undefined }).longest).toBe(
+    expect(estimateSub({ useDefault: true, includeClaimKeys: [] }, { ...params, environments: [] }).longest).toBe(
       'repo:octo-org/site:ref:refs/heads/main',
     );
+  });
+
+  it('considers the preview environment', () => {
+    const estimate = estimateSub(
+      { useDefault: true, includeClaimKeys: [] },
+      { ...params, environments: ['prod', 'pull-request-previews'] },
+    );
+    expect(estimate.longest).toBe('repo:octo-org/site:environment:pull-request-previews');
   });
 
   it('renders customized claims', () => {
@@ -50,7 +58,7 @@ describe('estimateSub', () => {
   it('counts bytes, not characters', () => {
     const estimate = estimateSub(
       { useDefault: true, includeClaimKeys: [] },
-      { ...params, environment: 'production-é' },
+      { ...params, environments: ['production-é'] },
     );
     expect(estimate.longest).toBe('repo:octo-org/site:environment:production-é');
     expect(estimate.bytes).toBe(estimate.longest.length + 1);

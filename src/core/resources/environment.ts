@@ -1,5 +1,5 @@
 import { read, type Runtime } from '../io/reads.js';
-import type { Change } from '../types.js';
+import type { Change, Context, GitHubClient } from '../types.js';
 import { ADMIN_FIX, change, drift, type Resource } from './resource.js';
 
 interface Environment {
@@ -40,101 +40,140 @@ const readBranchPolicies = (rt: Runtime, name: string) =>
     ),
   );
 
+interface Target {
+  name: string;
+  branch: string | false;
+}
+
+/** The deploy environment, then the preview environment, which any branch can deploy to. */
+const targets = (ctx: Context): Target[] => [
+  ...(ctx.environment ? [ctx.environment] : []),
+  ...(ctx.previewEnvironment ? [{ name: ctx.previewEnvironment.name, branch: false as const }] : []),
+];
+
+const ID = 'gh.environment';
+
+const anyBranch = (env: Target, manual: boolean) =>
+  change(ID, 'set', `allow any branch to deploy to ${env.name}`, `let any branch deploy to ${env.name}`, manual);
+
+const createAll = (env: Target, manual: boolean) => [
+  change(ID, 'create', `create environment ${env.name}`, `create the ${env.name} environment`, manual),
+  env.branch === false
+    ? anyBranch(env, manual)
+    : change(
+        ID,
+        'create',
+        `allow only ${env.branch} to deploy to ${env.name}`,
+        `only let ${env.branch} deploy to ${env.name}`,
+        manual,
+      ),
+];
+
+type TargetOutcome =
+  { kind: 'ok'; message: string } | { kind: 'drift'; changes: Change[] } | { kind: 'skipped'; message: string };
+
+const evaluateTarget = async (
+  rt: Runtime,
+  github: GitHubClient,
+  env: Target,
+  manual: boolean,
+): Promise<TargetOutcome> => {
+  const current = await read(() => github.request<Environment>('GET', environmentPath(rt, env.name)));
+  if (current.kind === 'skipped') return { kind: 'skipped', message: current.reason };
+  if (current.kind === 'missing') return { kind: 'drift', changes: createAll(env, manual) };
+
+  if (env.branch === false) {
+    if (!current.value.deployment_branch_policy) return { kind: 'ok', message: `${env.name} allows any branch` };
+    return { kind: 'drift', changes: [anyBranch(env, manual)] };
+  }
+
+  const changes: Change[] = [];
+  if (needsBranchPolicy(current.value)) {
+    changes.push(
+      change(
+        ID,
+        'update',
+        `limit ${env.name} to selected branches`,
+        `limit which branches deploy to ${env.name}`,
+        manual,
+      ),
+    );
+  }
+  const branches = await readBranchPolicies(rt, env.name);
+  if (branches.kind === 'skipped') return { kind: 'skipped', message: branches.reason };
+  const names = branches.kind === 'found' ? (branches.value.branch_policies ?? []).map((p) => p.name) : [];
+  if (!names.includes(env.branch))
+    changes.push(
+      change(
+        ID,
+        'create',
+        `allow ${env.branch} to deploy to ${env.name}`,
+        `let ${env.branch} deploy to ${env.name}`,
+        manual,
+      ),
+    );
+  if (!changes.length) return { kind: 'ok', message: `${env.name} only deploys from ${env.branch}` };
+  return { kind: 'drift', changes };
+};
+
+const applyTarget = async (rt: Runtime, github: GitHubClient, env: Target) => {
+  const path = environmentPath(rt, env.name);
+  const current = await read(() => github.request<Environment>('GET', path));
+  if (current.kind === 'skipped') return;
+  const protection = current.kind === 'found' ? currentProtection(current.value) : {};
+
+  if (env.branch === false) {
+    if (current.kind === 'missing' || current.value.deployment_branch_policy) {
+      await github.request('PUT', path, { ...protection, deployment_branch_policy: null });
+    }
+    return;
+  }
+
+  if (current.kind === 'missing' || needsBranchPolicy(current.value)) {
+    await github.request('PUT', path, {
+      ...protection,
+      deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
+    });
+  }
+  const branches = await readBranchPolicies(rt, env.name);
+  if (branches.kind === 'skipped') return;
+  const names = branches.kind === 'found' ? (branches.value.branch_policies ?? []).map((p) => p.name) : [];
+  if (!names.includes(env.branch)) {
+    await github.request('POST', `${path}/deployment-branch-policies`, { name: env.branch, type: 'branch' });
+  }
+};
+
 export const environment: Resource = {
-  id: 'gh.environment',
+  id: ID,
   severity: 'warn',
   scope: 'trust-chain',
   async evaluate(rt) {
-    const env = rt.ctx.environment;
-    if (!env) return { kind: 'skipped', message: 'environment disabled' };
-    const anyBranch = (manual: boolean) =>
-      change(
-        this.id,
-        'set',
-        `allow any branch to deploy to ${env.name}`,
-        `let any branch deploy to ${env.name}`,
-        manual,
-      );
-    const createAll = (manual: boolean) => [
-      change(this.id, 'create', `create environment ${env.name}`, `create the ${env.name} environment`, manual),
-      env.branch === false
-        ? anyBranch(manual)
-        : change(
-            this.id,
-            'create',
-            `allow only ${env.branch} to deploy to ${env.name}`,
-            `only let ${env.branch} deploy to ${env.name}`,
-            manual,
-          ),
-    ];
-    if (!rt.github) return { kind: 'skipped', message: 'no GitHub credentials', changes: createAll(true) };
-
+    const envs = targets(rt.ctx);
+    if (!envs.length) return { kind: 'skipped', message: 'environment disabled' };
     const github = rt.github;
+    if (!github) {
+      return {
+        kind: 'skipped',
+        message: 'no GitHub credentials',
+        changes: envs.flatMap((env) => createAll(env, true)),
+      };
+    }
+
     const manual = rt.preflight.githubAdmin === false;
-    const current = await read(() => github.request<Environment>('GET', environmentPath(rt, env.name)));
-    if (current.kind === 'skipped') return { kind: 'skipped', message: current.reason };
-    if (current.kind === 'missing') return drift(createAll(manual), manual ? ADMIN_FIX : undefined);
-
-    if (env.branch === false) {
-      if (!current.value.deployment_branch_policy) return { kind: 'ok', message: `${env.name} allows any branch` };
-      return drift([anyBranch(manual)], manual ? ADMIN_FIX : undefined);
-    }
-
+    const messages: string[] = [];
     const changes: Change[] = [];
-    if (needsBranchPolicy(current.value)) {
-      changes.push(
-        change(
-          this.id,
-          'update',
-          `limit ${env.name} to selected branches`,
-          `limit which branches deploy to ${env.name}`,
-          manual,
-        ),
-      );
+    for (const env of envs) {
+      const outcome = await evaluateTarget(rt, github, env, manual);
+      if (outcome.kind === 'skipped') return outcome;
+      if (outcome.kind === 'ok') messages.push(outcome.message);
+      else changes.push(...outcome.changes);
     }
-    const branches = await readBranchPolicies(rt, env.name);
-    if (branches.kind === 'skipped') return { kind: 'skipped', message: branches.reason };
-    const names = branches.kind === 'found' ? (branches.value.branch_policies ?? []).map((p) => p.name) : [];
-    if (!names.includes(env.branch))
-      changes.push(
-        change(
-          this.id,
-          'create',
-          `allow ${env.branch} to deploy to ${env.name}`,
-          `let ${env.branch} deploy to ${env.name}`,
-          manual,
-        ),
-      );
-    if (!changes.length) return { kind: 'ok', message: `${env.name} only deploys from ${env.branch}` };
+    if (!changes.length) return { kind: 'ok', message: messages.join('; ') };
     return drift(changes, manual ? ADMIN_FIX : undefined);
   },
   async apply(rt) {
-    const env = rt.ctx.environment;
     const github = rt.github;
-    if (!env || !github) return;
-    const path = environmentPath(rt, env.name);
-    const current = await read(() => github.request<Environment>('GET', path));
-    if (current.kind === 'skipped') return;
-    const protection = current.kind === 'found' ? currentProtection(current.value) : {};
-
-    if (env.branch === false) {
-      if (current.kind === 'missing' || current.value.deployment_branch_policy) {
-        await github.request('PUT', path, { ...protection, deployment_branch_policy: null });
-      }
-      return;
-    }
-
-    if (current.kind === 'missing' || needsBranchPolicy(current.value)) {
-      await github.request('PUT', path, {
-        ...protection,
-        deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
-      });
-    }
-    const branches = await readBranchPolicies(rt, env.name);
-    if (branches.kind === 'skipped') return;
-    const names = branches.kind === 'found' ? (branches.value.branch_policies ?? []).map((p) => p.name) : [];
-    if (!names.includes(env.branch)) {
-      await github.request('POST', `${path}/deployment-branch-policies`, { name: env.branch, type: 'branch' });
-    }
+    if (!github) return;
+    for (const env of targets(rt.ctx)) await applyTarget(rt, github, env);
   },
 };

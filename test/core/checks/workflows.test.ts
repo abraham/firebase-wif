@@ -96,6 +96,69 @@ jobs:
       'no-steps.yml': 'on: push\njobs:\n  call:\n    uses: ./.github/workflows/reusable.yml\n',
       'mention.yml': 'on: push\njobs:\n  lint:\n    steps:\n      - run: echo "firebase deployment docs"\n',
     });
-    expect(analysis).toEqual({ deployJobs: 0, findings: [], writesCredentialsToWorkspace: false, parseErrors: [] });
+    expect(analysis).toEqual({
+      deployJobs: 0,
+      previewJobs: 0,
+      previewEnvironments: [],
+      findings: [],
+      writesCredentialsToWorkspace: false,
+      parseErrors: [],
+    });
+  });
+
+  describe('environments', () => {
+    const job = (environment: string, step: string) =>
+      `on: push\npermissions: write-all\njobs:\n  d:\n${environment}    steps:\n      - uses: abraham/firebase-wif@v0\n${step}`;
+    const run = (command: string) => `      - run: ${command}\n`;
+    const hosting = (channelId?: string) =>
+      `      - uses: FirebaseExtended/action-hosting-deploy@v0\n${channelId ? `        with:\n          channelId: ${channelId}\n` : ''}`;
+    const firebaseAction = (args: string) =>
+      `      - uses: w9jds/firebase-action@v15\n        with:\n          args: ${args}\n`;
+    const expected = { live: { name: 'production', branch: 'main' }, preview: 'preview' };
+    const problems = (text: string) => analyzeWorkflows({ 'd.yml': text }, expected).findings[0]?.problems ?? [];
+
+    it('tells live deploys from preview channel deploys', () => {
+      const live = 'deploys live without `environment: production`';
+      const preview = 'deploys to a preview channel without `environment: preview`';
+      expect(problems(job('', run('npx firebase-tools deploy --only hosting')))).toEqual([live]);
+      expect(problems(job('', run('firebase hosting:channel:deploy pr-1')))).toEqual([preview]);
+      expect(problems(job('', hosting('live')))).toEqual([live]);
+      expect(problems(job('', hosting()))).toEqual([preview]);
+      expect(problems(job('', hosting().replace('FirebaseExtended', 'firebaseextended')))).toEqual([preview]);
+      expect(problems(job('', hosting('pr-${{ github.event.number }}')))).toEqual([preview]);
+      expect(problems(job('', hosting("${{ github.event_name == 'push' && 'live' || '' }}")))).toEqual([]);
+      expect(problems(job('', firebaseAction('deploy --only hosting')))).toEqual([live]);
+      expect(problems(job('', firebaseAction('hosting:channel:deploy pr-1')))).toEqual([preview]);
+      expect(problems(job('', firebaseAction('firestore:indexes')))).toEqual([]);
+      expect(problems(job('', run('firebase hosting:channel:deploy pr-1') + run('firebase deploy')))).toEqual([live]);
+    });
+
+    it('checks the environment each job uses', () => {
+      expect(problems(job('    environment: production\n', run('firebase deploy')))).toEqual([]);
+      expect(problems(job('    environment:\n      name: production\n', run('firebase deploy')))).toEqual([]);
+      expect(problems(job('    environment: preview\n', run('firebase deploy')))).toEqual([
+        'deploys live in `preview`; use `environment: production`',
+      ]);
+      expect(problems(job('    environment: preview\n', hosting()))).toEqual([]);
+      expect(problems(job('    environment: staging\n', hosting()))).toEqual([
+        'deploys to a preview channel in `staging`; use `environment: preview`',
+      ]);
+      expect(problems(job('    environment: production\n', hosting()))).toEqual([
+        'deploys to a preview channel in `production`, which only main can deploy to; use `environment: preview`',
+      ]);
+      expect(problems(job('    environment: ${{ inputs.env }}\n', run('firebase deploy')))).toEqual([]);
+      expect(analyzeWorkflows({ 'd.yml': job('', run('firebase deploy')) }).findings).toEqual([]);
+    });
+
+    it('lists the environments preview jobs use', () => {
+      const analysis = analyzeWorkflows({
+        'a.yml': job('    environment: pr\n', hosting()),
+        'b.yml': job('    environment: ${{ inputs.env }}\n', hosting()),
+        'c.yml': job('', hosting()),
+        'd.yml': job('    environment: pr\n', hosting()),
+        'e.yml': job('    environment: production\n', run('firebase deploy')),
+      });
+      expect(analysis).toMatchObject({ deployJobs: 5, previewJobs: 4, previewEnvironments: ['pr'] });
+    });
   });
 });

@@ -56,11 +56,25 @@ describe('GitHub checks', () => {
   it('gh.workflows', async () => {
     const rt = await runtimeFor();
     const deploy =
-      'on: push\npermissions:\n  id-token: write\njobs:\n  d:\n    steps:\n      - uses: abraham/firebase-wif@v0\n      - run: firebase deploy\n';
+      'on: push\npermissions:\n  id-token: write\njobs:\n  d:\n    environment: production\n    steps:\n      - uses: abraham/firebase-wif@v0\n      - run: firebase deploy\n';
     expect(await workflows.run(rt)).toEqual({ status: 'skipped', message: 'no local files provided' });
     expect(await workflows.run({ ...rt, local: { workflows: { 'd.yml': deploy } } })).toEqual({
       status: 'pass',
       message: '1 deploy job look right',
+    });
+    const preview = deploy.replace('firebase deploy', 'firebase hosting:channel:deploy pr-1');
+    expect(await workflows.run({ ...rt, local: { workflows: { 'd.yml': preview } } })).toMatchObject({
+      status: 'warn',
+      message: 'd.yml d: deploys to a preview channel in `production`, which only main can deploy to',
+    });
+    const previewRt = { ...rt, ctx: { ...rt.ctx, previewEnvironment: { name: 'preview' } } };
+    expect(await workflows.run({ ...previewRt, local: { workflows: { 'd.yml': preview } } })).toMatchObject({
+      message:
+        'd.yml d: deploys to a preview channel in `production`, which only main can deploy to; use `environment: preview`',
+    });
+    const anyBranch = { ...rt, ctx: { ...rt.ctx, environment: { name: 'production', branch: false as const } } };
+    expect(await workflows.run({ ...anyBranch, local: { workflows: { 'd.yml': preview } } })).toMatchObject({
+      status: 'pass',
     });
     expect(await workflows.run({ ...rt, local: { workflows: { 'd.yml': 'jobs: [' } } })).toMatchObject({
       status: 'warn',
