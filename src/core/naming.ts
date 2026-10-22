@@ -86,6 +86,8 @@ export const repoPrincipalSet = (projectNumber: string, pool: string, repoId: nu
 export const defaultComputeServiceAccount = (projectNumber: string): string =>
   `${projectNumber}-compute@developer.gserviceaccount.com`;
 
+export const defaultAppEngineServiceAccount = (projectId: string): string => `${projectId}@appspot.gserviceaccount.com`;
+
 export const managedDescription = (repo: string, repoId: number): string => `${MANAGED_MARKER} for ${repo} (${repoId})`;
 
 export const desiredAttributeMapping = (): Record<string, string> => ({

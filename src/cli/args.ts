@@ -18,7 +18,7 @@ Options:
   --preset <name>               Role preset, repeatable: ${PRESET_NAMES.join(', ')} (default: from firebase.json)
   --role <role>                 Extra project role, repeatable
   --runtime-service-account <email>
-                                Functions runtime service account, repeatable (default: the compute default)
+                                Functions runtime service account, repeatable (default: the compute and App Engine defaults)
   --environment <name>          GitHub environment (default: ${DEFAULTS.environment})
   --no-environment              Skip the GitHub environment
   --branch <name>               Branch allowed to deploy (default: the repo's default branch)

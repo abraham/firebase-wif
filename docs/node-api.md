@@ -84,27 +84,27 @@ When `google` is omitted, `defaultGoogleClient()` is used; when `github` is omit
 
 `status`, `plan`, and `setup` take the same `Options`. `setup` also takes `confirm`.
 
-| Option                   | Default                                                 | Description                                                                                                                         |
-| ------------------------ | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `projectId`              | required                                                | Google Cloud project ID                                                                                                             |
-| `repo`                   | required                                                | `owner/name`                                                                                                                        |
-| `google`                 | `defaultGoogleClient()`                                 | A `GoogleAuth`                                                                                                                      |
-| `github`                 | `defaultGitHubClient()`                                 | A `GitHubAuth`, or `false` to skip GitHub                                                                                           |
-| `presets`                | `'auto'`                                                | Preset names, or `'auto'` to derive them from `firebaseJson` (see `presets.md`)                                                     |
-| `firebaseJson`           | `local.firebaseJson`                                    | Parsed `firebase.json`, for `'auto'` presets, when not passing `local`                                                              |
-| `roles`                  | `[]`                                                    | Extra project roles on top of the presets                                                                                           |
-| `runtimeServiceAccounts` | the project's default compute service account           | With the `functions` preset, the runtime service accounts the deploy service account may act as                                     |
-| `names`                  | `github`, `github-<repoId>`, `github-<repoId>`          | `{ pool?, provider?, serviceAccount? }`. Explicit names win over names found through repo variables.                                |
-| `variables`              | `FIREBASE_WIF_PROVIDER`, `FIREBASE_WIF_SERVICE_ACCOUNT` | `{ provider, serviceAccount }` repo variable names, or `false` to not manage variables                                              |
-| `home`                   |                                                         | `{ provider, serviceAccount }` of an existing trust chain to use instead of the one the variables point at (see `multi-project.md`) |
-| `environment`            | `{ name: 'production', branch: <default branch> }`      | `{ name, branch? }`, where `branch: false` lets any branch deploy, or `false` to skip the environment                               |
-| `prune`                  | `false`                                                 | Remove unrequested project roles from a service account firebase-wif manages                                                        |
-| `adopt`                  | `false`                                                 | Reuse a setup found through legacy repo variables: `true`, or a function `(candidate) => boolean \| Promise<boolean>` that decides  |
-| `local`                  |                                                         | `LocalFiles` from `resolveContext`; enables the local checks and the workflow check                                                 |
-| `onEvent`                |                                                         | Called with each `ProgressEvent`                                                                                                    |
-| `signal`                 |                                                         | Cancels the call                                                                                                                    |
-| `sleep`                  | real timers                                             | Used for polling and retry delays; tests pass a no-op                                                                               |
-| `confirm` (`setup` only) | always apply                                            | `(plan) => boolean \| Promise<boolean>`, called with the plan before anything is written; return `false` to cancel                  |
+| Option                   | Default                                                       | Description                                                                                                                         |
+| ------------------------ | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `projectId`              | required                                                      | Google Cloud project ID                                                                                                             |
+| `repo`                   | required                                                      | `owner/name`                                                                                                                        |
+| `google`                 | `defaultGoogleClient()`                                       | A `GoogleAuth`                                                                                                                      |
+| `github`                 | `defaultGitHubClient()`                                       | A `GitHubAuth`, or `false` to skip GitHub                                                                                           |
+| `presets`                | `'auto'`                                                      | Preset names, or `'auto'` to derive them from `firebaseJson` (see `presets.md`)                                                     |
+| `firebaseJson`           | `local.firebaseJson`                                          | Parsed `firebase.json`, for `'auto'` presets, when not passing `local`                                                              |
+| `roles`                  | `[]`                                                          | Extra project roles on top of the presets                                                                                           |
+| `runtimeServiceAccounts` | the project's default compute and App Engine service accounts | With the `functions` preset, the runtime service accounts the deploy service account may act as                                     |
+| `names`                  | `github`, `github-<repoId>`, `github-<repoId>`                | `{ pool?, provider?, serviceAccount? }`. Explicit names win over names found through repo variables.                                |
+| `variables`              | `FIREBASE_WIF_PROVIDER`, `FIREBASE_WIF_SERVICE_ACCOUNT`       | `{ provider, serviceAccount }` repo variable names, or `false` to not manage variables                                              |
+| `home`                   |                                                               | `{ provider, serviceAccount }` of an existing trust chain to use instead of the one the variables point at (see `multi-project.md`) |
+| `environment`            | `{ name: 'production', branch: <default branch> }`            | `{ name, branch? }`, where `branch: false` lets any branch deploy, or `false` to skip the environment                               |
+| `prune`                  | `false`                                                       | Remove unrequested project roles from a service account firebase-wif manages                                                        |
+| `adopt`                  | `false`                                                       | Reuse a setup found through legacy repo variables: `true`, or a function `(candidate) => boolean \| Promise<boolean>` that decides  |
+| `local`                  |                                                               | `LocalFiles` from `resolveContext`; enables the local checks and the workflow check                                                 |
+| `onEvent`                |                                                               | Called with each `ProgressEvent`                                                                                                    |
+| `signal`                 |                                                               | Cancels the call                                                                                                                    |
+| `sleep`                  | real timers                                                   | Used for polling and retry delays; tests pass a no-op                                                                               |
+| `confirm` (`setup` only) | always apply                                                  | `(plan) => boolean \| Promise<boolean>`, called with the plan before anything is written; return `false` to cancel                  |
 
 Every name is validated before any request, and an invalid one throws `INVALID_NAME`.
 

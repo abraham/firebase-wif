@@ -18,26 +18,26 @@ At most one command is allowed. Anything else, including extra positional argume
 
 ## Options
 
-| Option                                           | Default                                       | Description                                                                     |
-| ------------------------------------------------ | --------------------------------------------- | ------------------------------------------------------------------------------- |
-| `--project <id\|alias>`                          | `.firebaserc` default                         | Project ID, or an alias from `.firebaserc`                                      |
-| `--all-aliases`                                  | off                                           | Run once per project in `.firebaserc` (see below)                               |
-| `--repo <owner/name>`                            | git remote                                    | GitHub repository                                                               |
-| `--pool <id>`                                    | `github`                                      | Workload identity pool ID                                                       |
-| `--provider <id>`                                | `github-<repoId>`                             | Provider ID                                                                     |
-| `--service-account <id\|email>`                  | `github-<repoId>`                             | Deploy service account ID or email                                              |
-| `--preset <name>` (repeatable)                   | from `firebase.json`                          | `hosting`, `firestore`, `storage`, or `functions`                               |
-| `--role <role>` (repeatable)                     |                                               | Extra project role on top of the presets                                        |
-| `--runtime-service-account <email>` (repeatable) | the project's default compute service account | Functions runtime service accounts the deploy service account may act as        |
-| `--environment <name>`                           | `production`                                  | GitHub environment to create or check                                           |
-| `--no-environment`                               | off                                           | Skip the GitHub environment                                                     |
-| `--branch <name>`                                | the repo's default branch                     | Branch allowed to deploy to the environment                                     |
-| `--any-branch`                                   | off                                           | Let any branch deploy to the environment                                        |
-| `--variable-prefix <prefix>`                     | `FIREBASE_WIF_`                               | Repo variables are `<prefix>PROVIDER` and `<prefix>SERVICE_ACCOUNT`             |
-| `--json`                                         | off                                           | Print JSON instead of text (see JSON output)                                    |
-| `--cwd <dir>`                                    | the current directory                         | Where to look for `firebase.json`, `.firebaserc`, workflows, and the git remote |
-| `-h`, `--help`                                   |                                               | Print the usage                                                                 |
-| `--version`                                      |                                               | Print the version                                                               |
+| Option                                           | Default                                                       | Description                                                                     |
+| ------------------------------------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `--project <id\|alias>`                          | `.firebaserc` default                                         | Project ID, or an alias from `.firebaserc`                                      |
+| `--all-aliases`                                  | off                                                           | Run once per project in `.firebaserc` (see below)                               |
+| `--repo <owner/name>`                            | git remote                                                    | GitHub repository                                                               |
+| `--pool <id>`                                    | `github`                                                      | Workload identity pool ID                                                       |
+| `--provider <id>`                                | `github-<repoId>`                                             | Provider ID                                                                     |
+| `--service-account <id\|email>`                  | `github-<repoId>`                                             | Deploy service account ID or email                                              |
+| `--preset <name>` (repeatable)                   | from `firebase.json`                                          | `hosting`, `firestore`, `storage`, or `functions`                               |
+| `--role <role>` (repeatable)                     |                                                               | Extra project role on top of the presets                                        |
+| `--runtime-service-account <email>` (repeatable) | the project's default compute and App Engine service accounts | Functions runtime service accounts the deploy service account may act as        |
+| `--environment <name>`                           | `production`                                                  | GitHub environment to create or check                                           |
+| `--no-environment`                               | off                                                           | Skip the GitHub environment                                                     |
+| `--branch <name>`                                | the repo's default branch                                     | Branch allowed to deploy to the environment                                     |
+| `--any-branch`                                   | off                                                           | Let any branch deploy to the environment                                        |
+| `--variable-prefix <prefix>`                     | `FIREBASE_WIF_`                                               | Repo variables are `<prefix>PROVIDER` and `<prefix>SERVICE_ACCOUNT`             |
+| `--json`                                         | off                                                           | Print JSON instead of text (see JSON output)                                    |
+| `--cwd <dir>`                                    | the current directory                                         | Where to look for `firebase.json`, `.firebaserc`, workflows, and the git remote |
+| `-h`, `--help`                                   |                                                               | Print the usage                                                                 |
+| `--version`                                      |                                                               | Print the version                                                               |
 
 `setup` only:
 
