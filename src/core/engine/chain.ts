@@ -4,6 +4,7 @@ import type { Read, RepoResource } from '../io/reads.js';
 import {
   DEFAULT_ENVIRONMENT,
   DEFAULT_POOL,
+  defaultAppEngineServiceAccount,
   defaultComputeServiceAccount,
   defaultProviderId,
   defaultServiceAccountId,
@@ -97,7 +98,13 @@ export const buildContext = (
         });
 
   const runtimeServiceAccounts = presets.includes('functions')
-    ? (options.runtimeServiceAccounts ?? [defaultComputeServiceAccount(projectNumber)]).map(validateServiceAccountEmail)
+    ? (
+        options.runtimeServiceAccounts ?? [
+          defaultComputeServiceAccount(projectNumber),
+          // firebase-tools requires actAs on it before any functions deploy, when it exists.
+          defaultAppEngineServiceAccount(projectId),
+        ]
+      ).map(validateServiceAccountEmail)
     : [];
 
   return {

@@ -32,7 +32,7 @@ Any other role goes through `roles` (`--role`), on top of the presets. For examp
 
 ## Functions runtime service accounts
 
-Deploying functions needs `roles/iam.serviceAccountUser` so the deploy can act as the functions' runtime service account. firebase-wif grants it on each runtime service account, never at the project level, where it would let the deploy act as every service account in the project. The runtime service accounts default to the project's default compute service account, `<projectNumber>-compute@developer.gserviceaccount.com`, and can be set with `runtimeServiceAccounts` (`--runtime-service-account`). A runtime service account that doesn't exist yet is skipped until it does.
+Deploying functions needs `roles/iam.serviceAccountUser` so the deploy can act as the functions' runtime service account. firebase-wif grants it on each runtime service account, never at the project level, where it would let the deploy act as every service account in the project. The runtime service accounts default to the project's default compute service account, `<projectNumber>-compute@developer.gserviceaccount.com`, and its App Engine default service account, `<projectId>@appspot.gserviceaccount.com`, which `firebase-tools` checks before every functions deploy when it exists. They can be set with `runtimeServiceAccounts` (`--runtime-service-account`). A runtime service account that doesn't exist yet is ignored until it does.
 
 ## Narrowing roles
 

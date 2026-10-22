@@ -16,6 +16,7 @@ export const runtimeServiceAccountUser: Resource = {
     const member = `serviceAccount:${email}`;
     const changes: Change[] = [];
     const notes: string[] = [];
+    const existing: string[] = [];
     for (const runtime of runtimeServiceAccounts) {
       const policy = await readServiceAccountPolicy(rt, runtime);
       if (policy.kind === 'skipped') return { kind: 'skipped', message: policy.reason };
@@ -23,13 +24,14 @@ export const runtimeServiceAccountUser: Resource = {
         notes.push(`${runtime} doesn't exist yet`);
         continue;
       }
+      existing.push(runtime);
       if (!hasMember(policy.value, SERVICE_ACCOUNT_USER_ROLE, member)) {
         changes.push(change(this.id, 'bind', `let ${email} act as runtime ${runtime} (${SERVICE_ACCOUNT_USER_ROLE})`));
       }
     }
     if (changes.length) return drift(changes);
-    if (notes.length) return { kind: 'skipped', message: notes.join('; ') };
-    return { kind: 'ok', message: `${email} can act as ${runtimeServiceAccounts.join(', ')}` };
+    if (!existing.length) return { kind: 'skipped', message: notes.join('; ') };
+    return { kind: 'ok', message: `${email} can act as ${existing.join(', ')}` };
   },
   async apply(rt, w) {
     const member = `serviceAccount:${rt.ctx.serviceAccount}`;
