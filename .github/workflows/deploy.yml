@@ -58,3 +58,21 @@ jobs:
           GCP_SA_KEY: ${{ steps.wif.outputs.credentials_json }}
           PROJECT_ID: ${{ steps.wif.outputs.project_id }}
           PROJECT_PATH: demo
+
+  deploy-success:
+    needs: [deploy]
+    # Run even when a dependency fails, since a skipped required check counts as passing.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check that every deploy passed
+        env:
+          RESULT: ${{ needs.deploy.result }}
+          FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          # Fork pull requests skip the deploys on purpose, since they can't get OIDC tokens.
+          if [ "$RESULT" = "success" ] || { [ "$RESULT" = "skipped" ] && [ "$FORK" = "true" ]; }; then
+            exit 0
+          fi
+          echo "::error::The deploy jobs finished with: $RESULT"
+          exit 1
