@@ -33,7 +33,7 @@ Deploy to Firebase from GitHub Actions with Workload Identity Federation (OIDC),
        environment: production
        steps:
          - uses: actions/checkout@v7
-         - uses: abraham/firebase-wif@v0.1.0
+         - uses: abraham/firebase-wif@v0.2.0
            with:
              workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
              service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
@@ -59,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: npm ci && npm run build
-      - uses: abraham/firebase-wif@v0.1.0
+      - uses: abraham/firebase-wif@v0.2.0
         with:
           workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
           service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
@@ -80,7 +80,7 @@ Preview channels work the same way:
 
 ```yaml
 - id: wif
-  uses: abraham/firebase-wif@v0.1.0
+  uses: abraham/firebase-wif@v0.2.0
   with:
     workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
     service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
@@ -97,7 +97,7 @@ It runs in a container, so pass the credentials JSON instead of a file path:
 
 ```yaml
 - id: wif
-  uses: abraham/firebase-wif@v0.1.0
+  uses: abraham/firebase-wif@v0.2.0
   with:
     workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
     service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
@@ -174,6 +174,13 @@ The library never prints, prompts, or reads the environment or filesystem on its
 ## Versioning
 
 The npm package and the Action share a version. Every release gets one immutable `v0.y.z` tag; there are no `v0.y` or `v0` tags that move. Pin the Action to a full version and let Dependabot update it. While on 0.x, a minor release may change the API, CLI flags, check IDs, or Action inputs; pin `@abraham/firebase-wif@~0.y` if you need stability.
+
+## Releasing
+
+1. Update `version` in `package.json` (for example with `npm version 0.2.0 --no-git-tag-version`), update versions in documentation, and merge the change to `main` through a pull request.
+2. On GitHub, create a release from `main` with a new tag named `v` plus that version, such as `v0.2.0`.
+
+Publishing the release runs the publish workflow, which checks that the tag matches `package.json` and publishes the package to npm. The tag is what Action users pin to.
 
 ## License
 
