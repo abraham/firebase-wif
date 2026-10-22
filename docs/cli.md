@@ -33,6 +33,8 @@ At most one command is allowed. Anything else, including extra positional argume
 | `--no-environment`                               | off                                                           | Skip the GitHub environment                                                           |
 | `--branch <name>`                                | the repo's default branch                                     | Branch allowed to deploy to the environment                                           |
 | `--any-branch`                                   | off                                                           | Let any branch deploy to the environment                                              |
+| `--preview-environment <name>`                   | detected from the workflows                                   | GitHub environment any branch can deploy to, for preview channels                     |
+| `--no-preview-environment`                       | off                                                           | Skip the preview environment                                                          |
 | `--variable-prefix <prefix>`                     | `FIREBASE_WIF_`                                               | Repo variables are `<prefix>PROVIDER` and `<prefix>SERVICE_ACCOUNT`                   |
 | `--detailed`                                     | off                                                           | Show resource names, emails, role IDs, and check IDs in text output (see Text output) |
 | `--json`                                         | off                                                           | Print JSON instead of text (see JSON output)                                          |
@@ -53,7 +55,7 @@ Flags that the engine passes on (names, presets, roles, environment, prefix) are
 
 - An unknown flag or a missing flag value (the message from Node's argument parser, then the usage).
 - A `setup`-only flag with `status`: `--dry-run only works with setup.`
-- `--any-branch` with `--branch`, and `--all-aliases` with `--project`.
+- `--any-branch` with `--branch`, `--preview-environment` with `--no-preview-environment`, and `--all-aliases` with `--project`.
 - An unknown `--preset`, listing the valid names.
 
 How the project, repo, presets, and credentials are found is in `context-and-credentials.md` and `presets.md`.

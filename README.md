@@ -40,7 +40,7 @@ Deploy to Firebase from GitHub Actions with Workload Identity Federation (OIDC),
          - run: npx firebase-tools deploy --only hosting --non-interactive
    ```
 
-Setup creates a workload identity pool and provider that only trust this repository, a deploy service account with the roles for what `firebase.json` deploys (Hosting only by default), the repo variables the Action reads, and a `production` environment that only the default branch can deploy to. Check it any time with `npx @abraham/firebase-wif status`.
+Setup creates a workload identity pool and provider that only trust this repository, a deploy service account with the roles for what `firebase.json` deploys (Hosting only by default), the repo variables the Action reads, and a `production` environment that only the default branch can deploy to. When a workflow deploys to preview channels, it also creates a `preview` environment that any branch can deploy to. Check it any time with `npx @abraham/firebase-wif status`.
 
 ## Usage
 
@@ -66,14 +66,25 @@ jobs:
       - run: npx firebase-tools deploy --only hosting --non-interactive
 ```
 
-Preview channels work the same way:
+Preview channels work the same way, from a pull request job in the `preview` environment:
 
 ```yaml
-- id: deploy
-  run: |
-    npx firebase-tools hosting:channel:deploy "pr-${{ github.event.number }}" \
-      --expires 7d --json > deploy.json
-    echo "url=$(jq -r '.result[].url' deploy.json)" >> "$GITHUB_OUTPUT"
+on: pull_request
+jobs:
+  preview:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: preview
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      # checkout, build, and abraham/firebase-wif as above
+      - id: deploy
+        run: |
+          npx firebase-tools hosting:channel:deploy "pr-${{ github.event.number }}" \
+            --expires 7d --json > deploy.json
+          echo "url=$(jq -r '.result[].url' deploy.json)" >> "$GITHUB_OUTPUT"
 ```
 
 ### `FirebaseExtended/action-hosting-deploy`
@@ -146,6 +157,7 @@ Useful options (`--help` lists them all):
 - `--dry-run`, `--yes`: print the plan only, or apply without asking.
 - `--prune`: remove roles that are no longer requested from a service account firebase-wif created.
 - `--environment <name>`, `--any-branch`: the GitHub environment to create, and let any branch (and so pull requests) deploy to it instead of only the default branch.
+- `--preview-environment <name>`, `--no-preview-environment`: the environment any branch can deploy to, for preview channels. By default it's created when a workflow deploys to a preview channel, named after the environment those jobs use, or `preview`.
 - `--adopt`: reuse a setup made by `setup-wif.sh` or hoverboard (`GCP_WIF_PROVIDER`/`GCP_DEPLOY_SA` or `WIF_PROVIDER`/`DEPLOY_SERVICE_ACCOUNT` variables).
 - `--all-aliases`: run for every project in `.firebaserc`. The first project holds the pool, provider, and service account; the others only get APIs and deploy roles.
 - `--detailed`: show resource names, emails, and role IDs instead of plain-language summaries.

@@ -51,7 +51,7 @@ const oidcSub: Advisory = {
     if (template.kind === 'skipped') return skipped(template.reason);
     const value = template.kind === 'found' ? template.value : { use_default: true };
     const useDefault = value.use_default !== false || !value.include_claim_keys?.length;
-    const { environment } = rt.ctx;
+    const { environment, previewEnvironment } = rt.ctx;
     const estimate = estimateSub(
       { useDefault, includeClaimKeys: value.include_claim_keys ?? [] },
       {
@@ -59,7 +59,10 @@ const oidcSub: Advisory = {
         repoId: rt.ctx.repoId,
         ownerId: rt.ctx.ownerId,
         branch: environment && environment.branch ? environment.branch : rt.ctx.defaultBranch,
-        environment: environment ? environment.name : undefined,
+        environments: [
+          ...(environment ? [environment.name] : []),
+          ...(previewEnvironment ? [previewEnvironment.name] : []),
+        ],
       },
     );
     const kind = useDefault ? 'default sub template' : `customized sub (${value.include_claim_keys!.join(', ')})`;
@@ -77,7 +80,16 @@ const workflows: Advisory = {
   id: 'gh.workflows',
   async run(rt) {
     if (!rt.local?.workflows) return skipped('no local files provided');
-    const analysis = analyzeWorkflows(rt.local.workflows);
+    const { environment, previewEnvironment } = rt.ctx;
+    const analysis = analyzeWorkflows(rt.local.workflows, {
+      live: environment || undefined,
+      // Without a preview environment, preview jobs belong in a deploy environment that allows any branch.
+      preview: previewEnvironment
+        ? previewEnvironment.name
+        : environment && environment.branch === false
+          ? environment.name
+          : undefined,
+    });
     if (analysis.parseErrors.length) return warn(`couldn't parse ${analysis.parseErrors.join(', ')}`);
     if (!analysis.deployJobs) return skipped('no workflow deploys to Firebase yet');
     if (!analysis.findings.length) {

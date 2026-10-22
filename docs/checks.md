@@ -55,26 +55,27 @@ These run only when local files are passed (the CLI always passes them).
 
 ### GitHub
 
-| ID                  | Passes when                                                                                                                                   | Otherwise                                                                      |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `gh.repo`           | The repository is readable and the person running firebase-wif is a repo admin. When it isn't readable, the run stops with `REPO_NOT_FOUND`.  | warn when not an admin, because `setup` can't change variables or environments |
-| `gh.variables`\*    | Both repo variables exist and equal the provider name and service account email                                                               | fail                                                                           |
-| `gh.environment`\*  | The environment exists and only the deploy branch can deploy to it, or, with `--any-branch`, any branch can. Skipped with `--no-environment`. | warn                                                                           |
-| `gh.legacy-secrets` | No `FIREBASE_SERVICE_ACCOUNT*`, `FIREBASE_TOKEN`, or `GCP_SA_KEY` secrets remain (names only; values are never read)                          | warn, with the secret names                                                    |
-| `gh.oidc-sub`       | The job's `sub` claim fits Google's 127-byte `google.subject` limit (see below)                                                               | warn                                                                           |
-| `gh.workflows`      | Every local workflow job that deploys to Firebase can get an OIDC token and uses an auth step (see below)                                     | warn, listing each job's problems                                              |
+| ID                  | Passes when                                                                                                                                                                                                                       | Otherwise                                                                      |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `gh.repo`           | The repository is readable and the person running firebase-wif is a repo admin. When it isn't readable, the run stops with `REPO_NOT_FOUND`.                                                                                      | warn when not an admin, because `setup` can't change variables or environments |
+| `gh.variables`\*    | Both repo variables exist and equal the provider name and service account email                                                                                                                                                   | fail                                                                           |
+| `gh.environment`\*  | The environment exists and only the deploy branch can deploy to it, or, with `--any-branch`, any branch can. Skipped with `--no-environment`. When there's a preview environment, it also exists and any branch can deploy to it. | warn                                                                           |
+| `gh.legacy-secrets` | No `FIREBASE_SERVICE_ACCOUNT*`, `FIREBASE_TOKEN`, or `GCP_SA_KEY` secrets remain (names only; values are never read)                                                                                                              | warn, with the secret names                                                    |
+| `gh.oidc-sub`       | The job's `sub` claim fits Google's 127-byte `google.subject` limit (see below)                                                                                                                                                   | warn                                                                           |
+| `gh.workflows`      | Every local workflow job that deploys to Firebase can get an OIDC token and uses an auth step (see below)                                                                                                                         | warn, listing each job's problems                                              |
 
 ### `gh.oidc-sub`
 
-Google rejects a mapped `google.subject` longer than 127 bytes, and the provider maps it from the `sub` claim. The check reads the repository's `sub` template and estimates the longest `sub` among the contexts that deploy: a push to the deploy branch, a pull request, and the environment. Customizing the template never breaks trust, which is pinned to the repository ID; the check only warns when the estimate is over the limit. Claims whose values can't be known in advance are estimated at 40 bytes.
+Google rejects a mapped `google.subject` longer than 127 bytes, and the provider maps it from the `sub` claim. The check reads the repository's `sub` template and estimates the longest `sub` among the contexts that deploy: a push to the deploy branch, a pull request, and each environment. Customizing the template never breaks trust, which is pinned to the repository ID; the check only warns when the estimate is over the limit. Claims whose values can't be known in advance are estimated at 40 bytes.
 
 ### `gh.workflows`
 
-A job deploys to Firebase when a step uses `FirebaseExtended/action-hosting-deploy` or `w9jds/firebase-action`, or runs `firebase deploy` or `firebase hosting:channel:deploy` (also through `firebase-tools`). Each such job should:
+A job deploys to Firebase when a step uses `FirebaseExtended/action-hosting-deploy` or `w9jds/firebase-action`, or runs `firebase deploy` or `firebase hosting:channel:deploy` (also through `firebase-tools`). A step deploys live when it runs `firebase deploy`, passes `deploy` to `w9jds/firebase-action`, or sets `channelId: live` on `action-hosting-deploy`. It deploys to a preview channel when it runs or passes `hosting:channel:deploy`, or uses `action-hosting-deploy` with any other `channelId`. A job with a live step deploys live; a job whose steps all deploy to preview channels is a preview job. When it can't tell, such as a `channelId` expression that mentions `live`, it doesn't check the job's environment. Each deploy job should:
 
 - Have `permissions: id-token: write`, on the job or the workflow, or `write-all`.
 - When the workflow runs on `pull_request` or `pull_request_target`, have a same-repo guard (`if:` comparing `head.repo.full_name`, or checking `head.repo.fork`), because fork pull requests can't get OIDC tokens.
 - Use `abraham/firebase-wif` or `google-github-actions/auth`.
+- Use the deploy environment when it deploys live, and the preview environment when it's a preview job. A preview job in a deploy environment that only the deploy branch can deploy to is always flagged, because pull requests can't deploy from it. Environments given as expressions aren't checked, and nothing is checked for an environment that's skipped.
 
 It's skipped when no workflow deploys to Firebase, and warns with the file names when a workflow isn't valid YAML.
 
@@ -91,6 +92,6 @@ Check IDs, which checks are reconcile checks, and their severities are public AP
 ## How it's tested
 
 - `test/core/checks/local.test.ts`, `gcp.test.ts`, and `github.test.ts` run each advisory check against the `/testing` fakes in passing, warning, and skipped states.
-- `test/core/checks/workflows.test.ts` covers deploy detection, each workflow problem, credential files in the workspace, and invalid YAML.
+- `test/core/checks/workflows.test.ts` covers deploy detection, telling live deploys from preview channel deploys, each workflow problem including the wrong environment, credential files in the workspace, and invalid YAML.
 - `test/core/checks/oidc.test.ts` covers the `sub` estimate for the default and customized templates, in bytes rather than characters.
 - `test/core/engine/catalog.test.ts` checks the report order; `test/core/engine/engine.test.ts` checks that reconcile checks fail exactly when the plan has changes, and the skipped reasons.

@@ -93,7 +93,7 @@ When creating the provider fails because of the `constraints/iam.workloadIdentit
 
 - **Never loosen or delete.** `setup` only adds or tightens. Extra grants, legacy secrets, and service account keys are reported by checks and left for the user to remove.
 - **`--prune` is the one exception.** It removes the deploy service account from unconditional project role bindings that aren't requested, and only when the account carries the `Managed by firebase-wif` marker. It never touches conditional bindings or other members. On an account without the marker it changes nothing, and the `gcp.extra-roles` check says why.
-- **`--any-branch` removes a branch policy only because it was asked for.** It sets the environment to allow any branch, keeping its reviewers and wait timers.
+- **`--any-branch` removes a branch policy only because it was asked for.** It sets the environment to allow any branch, keeping its reviewers and wait timers. The preview environment exists for pull request branches, so it gets the same treatment.
 - **No GitHub access means manual steps.** Without GitHub credentials, the variables and environment become manual changes with exact descriptions. Without repo admin access, GitHub changes become manual too, with the fix `Ask a repo admin to run firebase-wif setup, or make these changes by hand.`
 
 ## Environment
@@ -101,6 +101,12 @@ When creating the provider fails because of the `constraints/iam.workloadIdentit
 `gh.environment` creates the environment, or updates it when its deployment branch policy isn't "selected branches only", then adds a branch policy for the deploy branch if there isn't one. Other branch policies are never removed. GitHub's environment update drops protection rules it isn't sent, so `apply` sends the current reviewers, wait timer, and self-review setting back with every update.
 
 With `--any-branch`, the environment is correct when it has no deployment branch policy, and `apply` removes one if it's there.
+
+### Preview environment
+
+Preview channels deploy from pull request branches, which a default-branch-only environment blocks, so they get their own environment that any branch can deploy to. `gh.environment` reconciles it after the deploy environment, the same way as `--any-branch`.
+
+By default it's only set up when a local workflow has a job that deploys only to preview channels (see `gh.workflows` in `checks.md`). It's named after the first environment such a job uses that isn't the deploy environment, else `preview`. When the preview jobs use the deploy environment and it allows any branch, no preview environment is needed. `--preview-environment <name>` sets one up regardless of the workflows, and `--no-preview-environment` skips it. Its name must differ from the deploy environment's, or the run throws `INVALID_NAME`.
 
 ## Adopting a legacy setup
 
@@ -116,7 +122,7 @@ Adopting reuses the provider and service account, writes the expected variables 
 
 - Never write during `status` or `plan`.
 - Never write before the permission check and confirmation.
-- Never loosen or delete, except `--prune` on a managed account and `--any-branch` on the environment it names.
+- Never loosen or delete, except `--prune` on a managed account, and `--any-branch` or the preview environment on the environment they name.
 - Never re-point another repository's provider.
 - Never lose a conditional binding, another member, or a concurrent policy change: always read-modify-write with the `etag`.
 

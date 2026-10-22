@@ -29,6 +29,11 @@ export const buildOptions = ({
   environment: args.noEnvironment
     ? false
     : { name: args.environment ?? DEFAULTS.environment, branch: args.anyBranch ? false : args.branch },
+  previewEnvironment: args.noPreviewEnvironment
+    ? false
+    : args.previewEnvironment
+      ? { name: args.previewEnvironment }
+      : undefined,
   local: resolved.local,
   signal,
   ...(home ? { home } : {}),

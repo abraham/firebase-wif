@@ -1,9 +1,11 @@
 import { apisFor, PRESET_NAMES, resolvePresets, rolesFor } from '../../presets.js';
+import { analyzeWorkflows } from '../checks/workflows.js';
 import { FirebaseWifError } from '../errors.js';
 import type { Read, RepoResource } from '../io/reads.js';
 import {
   DEFAULT_ENVIRONMENT,
   DEFAULT_POOL,
+  DEFAULT_PREVIEW_ENVIRONMENT,
   defaultAppEngineServiceAccount,
   defaultComputeServiceAccount,
   defaultProviderId,
@@ -52,6 +54,27 @@ const linkedChain = (
     provider: found(variables ? variables.provider : undefined) ?? adopted?.provider,
     serviceAccount: found(variables ? variables.serviceAccount : undefined) ?? adopted?.serviceAccount,
   };
+};
+
+/** The given preview environment, else one for the local workflows' preview channel deploys. */
+const previewEnvironment = (options: Options, production: Context['environment']): Context['previewEnvironment'] => {
+  if (options.previewEnvironment === false) return false;
+  if (options.previewEnvironment) {
+    const { name } = options.previewEnvironment;
+    if (production && production.name === name) {
+      throw new FirebaseWifError(
+        'INVALID_NAME',
+        `Invalid preview environment "${name}": it must differ from the deploy environment.`,
+      );
+    }
+    return { name };
+  }
+  const analysis = analyzeWorkflows(options.local?.workflows ?? {});
+  if (!analysis.previewJobs) return false;
+  const named = analysis.previewEnvironments.find((name) => !production || name !== production.name);
+  if (named) return { name: named };
+  // Preview jobs can already use a deploy environment that any branch can deploy to.
+  return production && production.branch === false ? false : { name: DEFAULT_PREVIEW_ENVIRONMENT };
 };
 
 /** Works out every name in the trust chain, and whether another project holds it. */
@@ -107,6 +130,14 @@ export const buildContext = (
       ).map(validateServiceAccountEmail)
     : [];
 
+  const environment: Context['environment'] =
+    options.environment === false
+      ? false
+      : {
+          name: options.environment?.name ?? DEFAULT_ENVIRONMENT,
+          branch: options.environment?.branch ?? repo.default_branch,
+        };
+
   return {
     projectId,
     projectNumber,
@@ -119,13 +150,8 @@ export const buildContext = (
     serviceAccount,
     homeProjectId: home ? (serviceAccountProject(home.serviceAccount) ?? home.projectNumber) : projectId,
     variables,
-    environment:
-      options.environment === false
-        ? false
-        : {
-            name: options.environment?.name ?? DEFAULT_ENVIRONMENT,
-            branch: options.environment?.branch ?? repo.default_branch,
-          },
+    environment,
+    previewEnvironment: previewEnvironment(options, environment),
     presets,
     roles: rolesFor({ presets, roles: (options.roles ?? []).map(validateRole) }),
     apis: home ? apisFor(presets).filter((api) => !TOKEN_EXCHANGE_APIS.includes(api)) : apisFor(presets),

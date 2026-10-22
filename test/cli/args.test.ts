@@ -35,6 +35,8 @@ describe('parseCli', () => {
         'r@p.iam.gserviceaccount.com',
         '--any-branch',
         '--no-environment',
+        '--preview-environment',
+        'pr',
         '--variable-prefix',
         'WIF_',
         '--dry-run',
@@ -49,6 +51,8 @@ describe('parseCli', () => {
       runtimeServiceAccounts: ['r@p.iam.gserviceaccount.com'],
       anyBranch: true,
       noEnvironment: true,
+      previewEnvironment: 'pr',
+      noPreviewEnvironment: false,
       variablePrefix: 'WIF_',
       dryRun: true,
       yes: true,
@@ -68,6 +72,10 @@ describe('parseCli', () => {
     [['status', 'setup'], 'Unknown command: status setup'],
     [['status', '--yes'], '--yes only works with setup.\n'],
     [['--any-branch', '--branch', 'main'], 'Pass either --branch or --any-branch, not both.\n'],
+    [
+      ['--preview-environment', 'pr', '--no-preview-environment'],
+      'Pass either --preview-environment or --no-preview-environment, not both.\n',
+    ],
     [['--all-aliases', '--project', 'p'], 'Pass either --project or --all-aliases, not both.\n'],
     [['--preset', 'database'], 'Unknown preset "database". Use one of: hosting, firestore, storage, functions.\n'],
   ])('rejects %j', (argv, message) => {

@@ -25,16 +25,17 @@ export const estimateSub = (
     repoId,
     ownerId,
     branch,
-    environment,
+    environments = [],
   }: {
     repo: string;
     repoId: number;
     ownerId: number;
     branch: string;
-    environment?: string | undefined;
+    environments?: readonly string[] | undefined;
   },
 ): SubEstimate => {
-  const contexts = [`ref:refs/heads/${branch}`, 'pull_request', ...(environment ? [`environment:${environment}`] : [])];
+  const contexts = [`ref:refs/heads/${branch}`, 'pull_request', ...environments.map((name) => `environment:${name}`)];
+  const environment = environments.reduce((a, b) => (bytes(b) > bytes(a) ? b : a), '');
 
   const render = (context: string): string => {
     if (template.useDefault || !template.includeClaimKeys.length) return `repo:${repo}:${context}`;
@@ -54,7 +55,7 @@ export const estimateSub = (
           case 'ref':
             return `ref:refs/heads/${branch}`;
           case 'environment':
-            return `environment:${environment ?? ''}`;
+            return `environment:${environment}`;
           case 'job_workflow_ref':
             return `job_workflow_ref:${repo}/.github/workflows/deploy.yml@refs/heads/${branch}`;
           default:
