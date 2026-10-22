@@ -47,6 +47,7 @@ export const applyChanges = async (
   const manual: Change[] = [];
   for (const resource of RESOURCES) {
     let pending: Change[] = [];
+    const done = new Set<string>();
     // A second pass covers follow-up changes, like patching a provider right after restoring it.
     for (let pass = 0; pass < 2; pass++) {
       signal?.throwIfAborted();
@@ -70,7 +71,8 @@ export const applyChanges = async (
       const changes =
         outcome.kind === 'drift' ? outcome.changes : outcome.kind === 'skipped' ? (outcome.changes ?? []) : [];
       pending = changes.filter((c) => c.manual);
-      const automatic = changes.filter((c) => !c.manual);
+      // Reads can lag a write (a new provider can 404 for a moment), so don't redo what just succeeded.
+      const automatic = changes.filter((c) => !c.manual && !done.has(c.description));
       if (!automatic.length) break;
 
       for (const change of automatic) w.emit({ type: 'change:start', change });
@@ -80,6 +82,7 @@ export const applyChanges = async (
         throw applyError(error, automatic[0]!, applied);
       }
       for (const change of automatic) {
+        done.add(change.description);
         applied.push(change);
         w.emit({ type: 'change:done', change });
       }

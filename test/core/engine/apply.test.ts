@@ -45,4 +45,16 @@ describe('applyChanges', () => {
     expect(result.applied.map((c) => c.description)).toContain('create workload identity pool github');
     expect(result.status.ok).toBe(true);
   });
+
+  it("doesn't recreate a provider that still reads as missing right after creating it", async () => {
+    const fakes = createConfiguredFakes();
+    delete fakes.google.state.providers[fakes.names.provider];
+    // inspect, the first pass, then the second pass right after the create.
+    fakes.google.state.failures.push({ url: fakes.names.provider, method: 'GET', status: 404, times: 3 });
+    const options = { ...fakes.options, google: fakes.google, github: fakes.github, sleep: async () => {} };
+    const result = await applyChanges(options, await inspect(options), undefined);
+    const creates = fakes.google.calls.filter((c) => c.method === 'POST' && c.url.includes('/providers?'));
+    expect(creates).toHaveLength(1);
+    expect(result.status.ok).toBe(true);
+  });
 });
