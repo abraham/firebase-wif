@@ -58,7 +58,7 @@ describe('status', () => {
       pool: fakes.names.pool,
       provider: fakes.names.provider,
       serviceAccount: fakes.names.serviceAccount,
-      roles: ['roles/firebasehosting.admin'],
+      roles: ['roles/firebasehosting.admin', 'roles/serviceusage.serviceUsageConsumer'],
       environment: { name: 'production', branch: 'main' },
     });
     expect(report.preflight).toEqual({ missingPermissions: [], githubAdmin: true });
@@ -91,6 +91,7 @@ describe('status', () => {
       'gcp.pool create',
       'gcp.provider create',
       'gcp.service-account create',
+      'gcp.project-roles bind',
       'gcp.project-roles bind',
       'gcp.wi-user bind',
       'gh.variables set',
@@ -199,6 +200,7 @@ describe('status', () => {
       'map attribute.repository_id on provider github-987654321',
       'enable service account github-987654321@demo-project.iam.gserviceaccount.com',
       'grant roles/firebasehosting.admin on demo-project to github-987654321@demo-project.iam.gserviceaccount.com',
+      'grant roles/serviceusage.serviceUsageConsumer on demo-project to github-987654321@demo-project.iam.gserviceaccount.com',
       'let octo-org/site act as github-987654321@demo-project.iam.gserviceaccount.com (roles/iam.workloadIdentityUser)',
     ]);
     expectConsistent(report);
@@ -393,6 +395,7 @@ describe('setup', () => {
       'gcp.provider create',
       'gcp.service-account create',
       'gcp.project-roles bind',
+      'gcp.project-roles bind',
       'gcp.wi-user bind',
       'gh.variables set',
       'gh.variables set',
@@ -505,7 +508,11 @@ describe('setup', () => {
     expect(fakes.google.state.projects[0]!.iamPolicy).toEqual({
       version: 3,
       etag: 'BwX8',
-      bindings: [conditional, { role: 'roles/firebasehosting.admin', members: ['user:a@example.com', member] }],
+      bindings: [
+        conditional,
+        { role: 'roles/firebasehosting.admin', members: ['user:a@example.com', member] },
+        { role: 'roles/serviceusage.serviceUsageConsumer', members: [member] },
+      ],
     });
   });
 
@@ -625,6 +632,7 @@ describe('setup', () => {
     expect(result.applied.map((c) => c.action)).toEqual(['unbind', 'unbind']);
     expect(fakes.google.state.projects[0]!.iamPolicy.bindings).toEqual([
       { role: 'roles/firebasehosting.admin', members: [member] },
+      { role: 'roles/serviceusage.serviceUsageConsumer', members: [member] },
       { role: 'roles/editor', members: ['user:a@example.com'] },
       conditional,
     ]);
@@ -827,6 +835,7 @@ describe('setup', () => {
     ]);
     expect(result.applied.map((c) => `${c.resource} ${c.action}`)).toEqual([
       'gcp.provider-condition update',
+      'gcp.project-roles bind',
       'gh.variables set',
       'gh.variables set',
     ]);
@@ -885,6 +894,7 @@ describe('multiple projects', () => {
     expect(report.changes.map((c) => `${c.resource} ${c.action}`)).toEqual([
       'gcp.apis enable',
       'gcp.project-roles bind',
+      'gcp.project-roles bind',
     ]);
     expect(fakes.google.calls).toContainEqual(
       expect.objectContaining({
@@ -898,11 +908,15 @@ describe('multiple projects', () => {
     expect(result.applied.map((c) => c.description)).toEqual([
       'enable cloudresourcemanager.googleapis.com, firebasehosting.googleapis.com, iam.googleapis.com',
       `grant roles/firebasehosting.admin on staging-project to ${fakes.names.serviceAccount}`,
+      `grant roles/serviceusage.serviceUsageConsumer on staging-project to ${fakes.names.serviceAccount}`,
     ]);
     expect(staging.iamPolicy).toEqual({
       version: 1,
       etag: 'BwX1',
-      bindings: [{ role: 'roles/firebasehosting.admin', members: [`serviceAccount:${fakes.names.serviceAccount}`] }],
+      bindings: [
+        { role: 'roles/firebasehosting.admin', members: [`serviceAccount:${fakes.names.serviceAccount}`] },
+        { role: 'roles/serviceusage.serviceUsageConsumer', members: [`serviceAccount:${fakes.names.serviceAccount}`] },
+      ],
     });
     expect(Object.keys(fakes.google.state.pools)).toEqual([fakes.names.pool]);
     expect(Object.keys(fakes.google.state.serviceAccounts)).toEqual([fakes.names.serviceAccount]);

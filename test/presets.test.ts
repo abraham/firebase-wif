@@ -42,7 +42,10 @@ describe('isPresetName', () => {
 
 describe('rolesFor', () => {
   it('keeps hosting to one role', () => {
-    expect(rolesFor({ presets: ['hosting'] })).toEqual(['roles/firebasehosting.admin']);
+    expect(rolesFor({ presets: ['hosting'] })).toEqual([
+      'roles/firebasehosting.admin',
+      'roles/serviceusage.serviceUsageConsumer',
+    ]);
   });
 
   it('deduplicates and sorts with extra roles', () => {

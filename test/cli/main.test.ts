@@ -96,7 +96,7 @@ describe('firebase-wif status', () => {
           ✓ gcp.provider-condition  only accepts octo-org/site (id 987654321)
           ✓ gcp.service-account     github-987654321@demo-project.iam.gserviceaccount.com exists
           ✓ gcp.sa-keys             no user-managed keys
-          ✓ gcp.project-roles       1 role on demo-project
+          ✓ gcp.project-roles       2 roles on demo-project
           ✓ gcp.extra-roles         no roles beyond the requested ones
           ✓ gcp.wi-user             octo-org/site can act as github-987654321@demo-project.iam.gserviceaccount.com
           ✓ gcp.wi-user-broad       only this repository can act as the service account
@@ -476,7 +476,11 @@ describe('--all-aliases', () => {
     const dryRun = JSON.parse((await cli(['setup', '--all-aliases', '--dry-run', '--json'], fakes, { cwd })).stdout);
     expect(dryRun.map((entry: { alias: string }) => entry.alias)).toEqual(['default', 'staging']);
     expect(dryRun[1].context.homeProjectId).toBe('demo-project');
-    expect(dryRun[1].changes.map((c: { resource: string }) => c.resource)).toEqual(['gcp.apis', 'gcp.project-roles']);
+    expect(dryRun[1].changes.map((c: { resource: string }) => c.resource)).toEqual([
+      'gcp.apis',
+      'gcp.project-roles',
+      'gcp.project-roles',
+    ]);
 
     const { code, stdout } = await cli(['setup', '--all-aliases', '--yes', '--json'], fakes, { cwd });
     expect(code).toBe(0);
@@ -487,6 +491,7 @@ describe('--all-aliases', () => {
     ]);
     expect(fakes.google.state.projects[1]!.iamPolicy.bindings).toEqual([
       { role: 'roles/firebasehosting.admin', members: [`serviceAccount:${fakes.names.serviceAccount}`] },
+      { role: 'roles/serviceusage.serviceUsageConsumer', members: [`serviceAccount:${fakes.names.serviceAccount}`] },
     ]);
     expect((await cli(['--all-aliases'], fakes, { cwd })).code).toBe(0);
   });
