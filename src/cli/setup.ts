@@ -8,7 +8,7 @@ const NEXT_STEPS =
   'IAM changes can take a few minutes to take effect. Workflow examples: https://github.com/abraham/firebase-wif#usage\n';
 
 export interface SetupContext {
-  args: Pick<CliArgs, 'dryRun' | 'yes' | 'adopt' | 'prune'>;
+  args: Pick<CliArgs, 'dryRun' | 'yes' | 'adopt' | 'prune' | 'detailed'>;
   output: Output;
   sources: Sources;
   ask: Ask;
@@ -31,19 +31,22 @@ const setupOptions = (options: Options, { args, output, ask, interactive }: Setu
     ? {}
     : {
         onEvent: (event) => {
-          if (event.type === 'change:done') output.stdout(`  ✓ ${event.change.description}\n`);
-          if (event.type === 'retry')
-            output.stdout(`    retrying in ${Math.round(event.delayMs / 1000)}s: ${event.reason}\n`);
+          if (event.type === 'change:done')
+            output.stdout(`  ✓ ${args.detailed ? event.change.description : event.change.summary}\n`);
+          if (event.type === 'retry') {
+            const delay = `retrying in ${Math.round(event.delayMs / 1000)}s`;
+            output.stdout(`    ${args.detailed ? `${delay}: ${event.reason}` : delay}\n`);
+          }
         },
       }),
 });
 
-const dryRun = async (options: Options, { output, sources }: SetupContext): Promise<Outcome> => {
+const dryRun = async (options: Options, { args, output, sources }: SetupContext): Promise<Outcome> => {
   try {
     const planned = await plan(options);
     const { context, changes, preflight } = planned;
     if (output.json) output.emit({ context, changes, preflight });
-    else output.stdout(renderPlan(planned, sources));
+    else output.stdout(renderPlan(planned, sources, args.detailed));
     return { code: EXIT.ok, context };
   } catch (error) {
     return { code: output.fail(error, exitFor(error)) };
@@ -59,7 +62,7 @@ export const runSetup = async (base: Options, ctx: SetupContext): Promise<Outcom
   // Why `confirm` declined, since `setup` only reports that it was cancelled.
   let declined: Outcome = { code: EXIT.failed };
   const confirm = async (planned: Plan): Promise<boolean> => {
-    if (!output.json) output.stdout(renderPlan(planned, sources));
+    if (!output.json) output.stdout(renderPlan(planned, sources, args.detailed));
     if (!planned.changes.length && !output.json) {
       declined = { code: EXIT.ok, context: planned.context };
       return false;
@@ -90,7 +93,7 @@ export const runSetup = async (base: Options, ctx: SetupContext): Promise<Outcom
   if (output.json) {
     output.emit(applied);
   } else {
-    output.stdout(`\n${renderStatus(result.status, sources)}`);
+    output.stdout(`\n${renderStatus(result.status, sources, args.detailed)}`);
     if (result.manual.length)
       output.stdout(`Do by hand:\n${result.manual.map((change) => `  - ${change.description}\n`).join('')}`);
     if (result.applied.length) output.stdout(NEXT_STEPS);

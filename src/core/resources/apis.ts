@@ -13,7 +13,14 @@ export const apis: Resource = {
       return { kind: 'skipped', message: services.kind === 'skipped' ? services.reason : 'unknown' };
     const disabled = [...services.value].filter(([, on]) => !on).map(([api]) => api);
     if (!disabled.length) return { kind: 'ok', message: `${services.value.size}/${services.value.size} enabled` };
-    return drift([change(this.id, 'enable', `enable ${disabled.join(', ')}`)]);
+    return drift([
+      change(
+        this.id,
+        'enable',
+        `enable ${disabled.join(', ')}`,
+        `turn on ${disabled.length} Google Cloud API${disabled.length === 1 ? '' : 's'}`,
+      ),
+    ]);
   },
   async apply(rt, w) {
     const services = await readServices(rt);

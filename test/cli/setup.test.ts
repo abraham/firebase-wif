@@ -30,7 +30,7 @@ const setupWith = async (
   const outcome = await runSetup(
     { ...fakes.options, google: fakes.google, github: fakes.github, sleep: async () => {} },
     {
-      args: { dryRun: false, yes: false, adopt: false, prune: false, ...args },
+      args: { dryRun: false, yes: false, adopt: false, prune: false, detailed: false, ...args },
       output,
       sources: { projectId: '--project', repo: '--repo' },
       ask: async (question) => (questions.push(question), answer),
@@ -47,8 +47,13 @@ describe('runSetup', () => {
     const fakes = broken();
     const { outcome, stdout } = await setupWith(fakes, { dryRun: true });
     expect(outcome.code).toBe(0);
-    expect(stdout).toContain('+ create workload identity pool github');
+    expect(stdout).toContain('+ create the GitHub identity pool');
     expect(writes(fakes)).toEqual([]);
+  });
+
+  it('prints resource names with --detailed', async () => {
+    const { stdout } = await setupWith(broken(), { dryRun: true, detailed: true });
+    expect(stdout).toContain('+ create workload identity pool github');
   });
 
   it('exits 0 with the context when already set up', async () => {
@@ -77,8 +82,13 @@ describe('runSetup', () => {
   it('applies with --yes, printing progress and the final status', async () => {
     const { outcome, stdout } = await setupWith(broken(), { yes: true });
     expect(outcome.code).toBe(0);
-    expect(stdout).toContain('  ✓ create workload identity pool github\n');
+    expect(stdout).toContain('  ✓ create the GitHub identity pool\n');
     expect(stdout).toContain('IAM changes can take a few minutes');
+  });
+
+  it('prints detailed progress with --detailed', async () => {
+    const { stdout } = await setupWith(broken(), { yes: true, detailed: true });
+    expect(stdout).toContain('  ✓ create workload identity pool github\n');
   });
 
   it('prints the apply result as JSON without the cancelled field', async () => {

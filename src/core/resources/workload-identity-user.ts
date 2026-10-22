@@ -13,7 +13,14 @@ export const workloadIdentityUser: Resource = {
   async evaluate(rt) {
     const { serviceAccount: email, repo } = rt.ctx;
     const principal = repoPrincipal(rt.ctx);
-    const bind = [change(this.id, 'bind', `let ${repo} act as ${email} (${WORKLOAD_IDENTITY_USER})`)];
+    const bind = [
+      change(
+        this.id,
+        'bind',
+        `let ${repo} act as ${email} (${WORKLOAD_IDENTITY_USER})`,
+        `let ${repo} deploy with the deploy account`,
+      ),
+    ];
 
     const account = await readServiceAccount(rt);
     if (account.kind === 'skipped') return { kind: 'skipped', message: account.reason };

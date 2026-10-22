@@ -17,7 +17,7 @@ describe('runStatus', () => {
     const { output, stdout } = capture(false);
     const outcome = await runStatus(
       { ...fakes.options, google: fakes.google, github: fakes.github },
-      { output, sources: SOURCES },
+      { output, sources: SOURCES, detailed: false },
     );
     expect(outcome.code).toBe(0);
     expect(outcome.context?.projectId).toBe('demo-project');
@@ -30,7 +30,7 @@ describe('runStatus', () => {
     const { output, stdout } = capture(true);
     const outcome = await runStatus(
       { ...fakes.options, google: fakes.google, github: fakes.github },
-      { output, sources: SOURCES },
+      { output, sources: SOURCES, detailed: false },
     );
     expect(outcome.code).toBe(1);
     expect(JSON.parse(stdout()).ok).toBe(false);
@@ -41,7 +41,7 @@ describe('runStatus', () => {
     const { output } = capture(false);
     const outcome = await runStatus(
       { ...fakes.options, projectId: 'missing-project', google: fakes.google, github: fakes.github },
-      { output, sources: SOURCES },
+      { output, sources: SOURCES, detailed: false },
     );
     expect(outcome).toEqual({ code: 3 });
   });

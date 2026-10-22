@@ -11,11 +11,24 @@ export const pool: Resource = {
     const id = poolId(rt.ctx);
     const current = await readPool(rt);
     if (current.kind === 'skipped') return { kind: 'skipped', message: current.reason };
-    if (current.kind === 'missing') return drift([change(this.id, 'create', `create workload identity pool ${id}`)]);
+    if (current.kind === 'missing')
+      return drift([
+        change(this.id, 'create', `create workload identity pool ${id}`, 'create the GitHub identity pool'),
+      ]);
     if (current.value.state === 'DELETED') {
-      return drift([change(this.id, 'undelete', `restore deleted workload identity pool ${id}`)]);
+      return drift([
+        change(
+          this.id,
+          'undelete',
+          `restore deleted workload identity pool ${id}`,
+          'restore the deleted GitHub identity pool',
+        ),
+      ]);
     }
-    if (current.value.disabled) return drift([change(this.id, 'update', `re-enable workload identity pool ${id}`)]);
+    if (current.value.disabled)
+      return drift([
+        change(this.id, 'update', `re-enable workload identity pool ${id}`, 'turn the GitHub identity pool back on'),
+      ]);
     return { kind: 'ok', message: `${id} is active` };
   },
   async apply(rt, w) {

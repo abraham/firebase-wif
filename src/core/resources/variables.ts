@@ -22,7 +22,9 @@ export const variables: Resource = {
       return {
         kind: 'skipped',
         message: 'no GitHub credentials',
-        changes: expected.map(([name, value]) => change(this.id, 'set', `set repo variable ${name} to ${value}`, true)),
+        changes: expected.map(([name, value]) =>
+          change(this.id, 'set', `set repo variable ${name} to ${value}`, `save repo variable ${name}`, true),
+        ),
       };
     }
     const manual = rt.preflight.githubAdmin === false;
@@ -31,7 +33,9 @@ export const variables: Resource = {
       const current = rt.variableValues.get(name) ?? { kind: 'skipped', reason: 'not read' };
       if (current.kind === 'skipped') return { kind: 'skipped', message: current.reason };
       if (current.kind === 'missing' || current.value !== value) {
-        changes.push(change(this.id, 'set', `set repo variable ${name} to ${value}`, manual));
+        changes.push(
+          change(this.id, 'set', `set repo variable ${name} to ${value}`, `save repo variable ${name}`, manual),
+        );
       }
     }
     if (!changes.length) return { kind: 'ok', message: `${names.provider} and ${names.serviceAccount} match` };

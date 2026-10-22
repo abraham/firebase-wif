@@ -2,7 +2,7 @@ import { CRM } from '../io/endpoints.js';
 import { readProjectPolicy, readServiceAccount } from '../io/google-reads.js';
 import type { Read, Runtime } from '../io/reads.js';
 import { updatePolicy } from '../io/writes.js';
-import { MANAGED_MARKER } from '../naming.js';
+import { MANAGED_MARKER, roleLabel } from '../naming.js';
 import { addMember, hasMember, removeMember, rolesOf, type Policy } from '../policy.js';
 import { change, drift, type Resource } from './resource.js';
 
@@ -32,8 +32,12 @@ export const projectRoles: Resource = {
     const missing = policy.kind === 'found' ? roles.filter((role) => !hasMember(policy.value, role, member)) : roles;
     const extra = await prunable(rt, policy);
     const changes = [
-      ...missing.map((role) => change(this.id, 'bind', `grant ${role} on ${projectId} to ${email}`)),
-      ...extra.map((role) => change(this.id, 'unbind', `remove ${role} on ${projectId} from ${email}`)),
+      ...missing.map((role) =>
+        change(this.id, 'bind', `grant ${role} on ${projectId} to ${email}`, `grant ${roleLabel(role)} access`),
+      ),
+      ...extra.map((role) =>
+        change(this.id, 'unbind', `remove ${role} on ${projectId} from ${email}`, `remove ${roleLabel(role)} access`),
+      ),
     ];
     if (!changes.length)
       return { kind: 'ok', message: `${roles.length} role${roles.length === 1 ? '' : 's'} on ${projectId}` };

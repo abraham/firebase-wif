@@ -2,6 +2,7 @@ import { SERVICE_ACCOUNT_USER_ROLE } from '../../presets.js';
 import { IAM } from '../io/endpoints.js';
 import { readServiceAccountPolicy } from '../io/google-reads.js';
 import { updatePolicy } from '../io/writes.js';
+import { runtimeLabel } from '../naming.js';
 import { hasMember } from '../policy.js';
 import type { Change } from '../types.js';
 import { change, drift, grant, type Resource } from './resource.js';
@@ -26,7 +27,14 @@ export const runtimeServiceAccountUser: Resource = {
       }
       existing.push(runtime);
       if (!hasMember(policy.value, SERVICE_ACCOUNT_USER_ROLE, member)) {
-        changes.push(change(this.id, 'bind', `let ${email} act as runtime ${runtime} (${SERVICE_ACCOUNT_USER_ROLE})`));
+        changes.push(
+          change(
+            this.id,
+            'bind',
+            `let ${email} act as runtime ${runtime} (${SERVICE_ACCOUNT_USER_ROLE})`,
+            `let the deploy account run functions as ${runtimeLabel(runtime, rt.ctx)}`,
+          ),
+        );
       }
     }
     if (changes.length) return drift(changes);

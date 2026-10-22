@@ -65,7 +65,7 @@ export const applyChanges = async (
       if (outcome.kind === 'blocked')
         throw applyError(
           outcome.error,
-          { resource: resource.id, action: 'update', description: outcome.message },
+          { resource: resource.id, action: 'update', description: outcome.message, summary: outcome.message },
           applied,
         );
       const changes =

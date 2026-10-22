@@ -5,7 +5,7 @@ import { renderStatus, type Sources } from './render.js';
 /** Runs `status` for one project and prints the report. */
 export const runStatus = async (
   options: Options,
-  { output, sources }: { output: Output; sources: Sources },
+  { output, sources, detailed }: { output: Output; sources: Sources; detailed: boolean },
 ): Promise<Outcome> => {
   let report;
   try {
@@ -15,6 +15,6 @@ export const runStatus = async (
     return { code: output.fail(error, exitFor(error)) };
   }
   if (output.json) output.emit(report);
-  else output.stdout(renderStatus(report, sources));
+  else output.stdout(renderStatus(report, sources, detailed));
   return { code: report.ok ? EXIT.ok : EXIT.failed, context: report.context };
 };

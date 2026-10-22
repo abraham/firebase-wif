@@ -32,8 +32,49 @@ const cli = async (argv: string[], fakes: ConfiguredFakes, deps: Partial<CliDeps
 };
 
 describe('firebase-wif status', () => {
-  it('prints a passing report', async () => {
-    const { code, stdout, stderr } = await cli([], createConfiguredFakes());
+  it('prints a plain-language report by default', async () => {
+    const { code, stdout } = await cli([], createConfiguredFakes());
+    expect(code).toBe(0);
+    expect(stdout).toMatchInlineSnapshot(`
+      "firebase-wif status
+        project  demo-project (from .firebaserc default)
+        repo     octo-org/site (from git remote origin)
+
+        Local
+          ✓ firebase.json found
+          ✓ Project listed in .firebaserc
+          ✓ Credential files kept out of git and Hosting
+
+        Google Cloud
+          ✓ Project found
+          ✓ You can run setup
+          ✓ Google Cloud APIs turned on
+          ✓ GitHub identity pool
+          ✓ GitHub sign-in
+          ✓ Only this repo can sign in
+          ✓ Deploy account
+          ✓ No deploy account keys
+          ✓ Deploy account access
+          ✓ No extra deploy account access
+          ✓ This repo can deploy with the deploy account
+          ✓ Only this repo can deploy with the deploy account
+
+        GitHub
+          ✓ Repo admin access
+          ✓ Repo variables
+          ✓ Deploy environment
+          ✓ No old deploy secrets
+          ✓ OIDC subject fits
+          - Deploy workflows
+              no workflow deploys to Firebase yet
+
+        0 failed, 0 warnings, 20 passed, 1 skipped
+      "
+    `);
+  });
+
+  it('prints a passing report with --detailed', async () => {
+    const { code, stdout, stderr } = await cli(['--detailed'], createConfiguredFakes());
     expect(stderr).toBe('');
     expect(code).toBe(0);
     expect(stdout).toMatchInlineSnapshot(`
@@ -78,7 +119,7 @@ describe('firebase-wif status', () => {
     fakes.github.state.repos['octo-org/site']!.variables = {};
     const { code, stdout } = await cli(['status', '--repo', 'octo-org/site'], fakes);
     expect(code).toBe(1);
-    expect(stdout).toContain('✗ gh.variables');
+    expect(stdout).toContain('✗ Repo variables\n        save repo variable FIREBASE_WIF_PROVIDER\n');
     expect(stdout).toContain('fix: firebase-wif setup');
     expect(stdout).toContain('  1 failed, 0 warnings, 19 passed, 1 skipped');
   });
@@ -178,6 +219,25 @@ describe('firebase-wif setup', () => {
     expect(code).toBe(0);
     expect(stdout).toMatchInlineSnapshot(`
       "firebase-wif setup
+        project  demo-project (from .firebaserc default)
+        repo     octo-org/site (from git remote origin)
+
+        Changes
+          + create the GitHub identity pool
+          + set up GitHub sign-in for this repo
+          ~ save repo variable FIREBASE_WIF_PROVIDER
+          ~ save repo variable FIREBASE_WIF_SERVICE_ACCOUNT
+      "
+    `);
+    expect(writes(fakes)).toEqual([]);
+  });
+
+  it('prints resource names in the plan with --detailed', async () => {
+    const fakes = brokenFakes();
+    const { code, stdout } = await cli(['setup', '--dry-run', '--detailed'], fakes);
+    expect(code).toBe(0);
+    expect(stdout).toMatchInlineSnapshot(`
+      "firebase-wif setup
         project  demo-project (#123456789012, from .firebaserc default)
         repo     octo-org/site (id 987654321, from git remote origin)
 
@@ -195,8 +255,8 @@ describe('firebase-wif setup', () => {
     const fakes = brokenFakes();
     const { code, stdout } = await cli(['setup', '--yes'], fakes);
     expect(code).toBe(0);
-    expect(stdout).toContain('  ✓ create workload identity pool github\n');
-    expect(stdout).toContain('  ✓ set repo variable FIREBASE_WIF_SERVICE_ACCOUNT');
+    expect(stdout).toContain('  ✓ create the GitHub identity pool\n');
+    expect(stdout).toContain('  ✓ save repo variable FIREBASE_WIF_SERVICE_ACCOUNT\n');
     expect(stdout).toContain('firebase-wif status');
     expect(stdout).toContain('  0 failed, 0 warnings, 20 passed, 1 skipped');
     expect(stdout).toContain('IAM changes can take a few minutes');
@@ -257,8 +317,8 @@ describe('firebase-wif setup', () => {
     const { code, stdout, stderr } = await cli(['setup', '--yes'], fakes, { signal: controller.signal });
     expect(code).toBe(130);
     expect(stderr).toBe('Interrupted.\n');
-    expect(stdout).toContain('  ✓ create workload identity pool github\n');
-    expect(stdout).not.toContain('✓ create provider');
+    expect(stdout).toContain('  ✓ create the GitHub identity pool\n');
+    expect(stdout).not.toContain('✓ set up GitHub sign-in');
     expect(writes(fakes).map((c) => c.url)).toEqual([expect.stringContaining('workloadIdentityPools?')]);
   });
 
@@ -279,8 +339,7 @@ describe('firebase-wif setup', () => {
     expect(questions).toEqual([
       'Adopt projects/123456789012/locations/global/workloadIdentityPools/github/providers/github-987654321 and github-987654321@demo-project.iam.gserviceaccount.com from GCP_WIF_PROVIDER and GCP_DEPLOY_SA?',
     ]);
-    expect(asked.stdout).toContain('  adopt    projects/123456789012');
-    expect(asked.stdout).toContain('(from GCP_WIF_PROVIDER and GCP_DEPLOY_SA)');
+    expect(asked.stdout).toContain('  adopt    the existing setup in GCP_WIF_PROVIDER and GCP_DEPLOY_SA\n');
 
     const fakes = legacy();
     const { code, stdout } = await cli(['setup', '--adopt', '--yes', '--json'], fakes);
@@ -370,7 +429,7 @@ describe('firebase-wif setup', () => {
       expect(stdout).toContain('  Do by hand\n    - set repo variable FIREBASE_WIF_PROVIDER');
       expect(stdout).toContain('Do by hand:\n  - set repo variable FIREBASE_WIF_PROVIDER');
       // Without credentials the variables can't be checked, so they're skipped rather than failed.
-      expect(stdout).toContain('- gh.variables');
+      expect(stdout).toContain('- Repo variables\n        no GitHub credentials\n');
       expect(code).toBe(0);
     } finally {
       vi.unstubAllGlobals();
@@ -401,12 +460,12 @@ describe('--all-aliases', () => {
     const { code, stdout } = await cli(['--all-aliases'], fakes, { cwd });
     expect(code).toBe(1);
     const [home, staging] = stdout.split('\nfirebase-wif status\n');
-    expect(home).toContain('project  demo-project (#123456789012, from .firebaserc alias default)');
+    expect(home).toContain('project  demo-project (from .firebaserc alias default)');
     expect(home).toContain('  0 failed, 0 warnings, 20 passed, 1 skipped');
-    expect(staging).toContain('project  staging-project (#222222222222, from .firebaserc alias staging)');
+    expect(staging).toContain('project  staging-project (from .firebaserc alias staging)');
     expect(staging).toContain('home     demo-project (shares its provider and service account)');
-    expect(staging).toContain('- gcp.pool                shared from demo-project');
-    expect(staging).toContain('\u2717 gcp.project-roles');
+    expect(staging).toContain('- GitHub identity pool\n        shared from demo-project');
+    expect(staging).toContain('\u2717 Deploy account access');
   });
 
   it('sets up the home project first, then grants roles in the others', async () => {

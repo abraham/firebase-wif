@@ -34,7 +34,13 @@ describe('toCheck', () => {
       status: 'fail',
       fix: 'firebase-wif setup',
     });
-    const manual = { resource: 'gh.variables' as const, action: 'set' as const, description: 'set it', manual: true };
+    const manual = {
+      resource: 'gh.variables' as const,
+      action: 'set' as const,
+      description: 'set it',
+      summary: 'set',
+      manual: true,
+    };
     expect(toCheck(variables, { kind: 'skipped', message: 'no GitHub', changes: [manual] })).toMatchObject({
       status: 'skipped',
       fix: 'set it',

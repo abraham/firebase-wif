@@ -14,6 +14,7 @@ describe('parseCli', () => {
       presets: [],
       variablePrefix: 'FIREBASE_WIF_',
       json: false,
+      detailed: false,
       allAliases: false,
     });
   });
@@ -38,6 +39,7 @@ describe('parseCli', () => {
         'WIF_',
         '--dry-run',
         '-y',
+        '--detailed',
       ]),
     ).toMatchObject({
       command: 'setup',
@@ -50,6 +52,7 @@ describe('parseCli', () => {
       variablePrefix: 'WIF_',
       dryRun: true,
       yes: true,
+      detailed: true,
     });
   });
 

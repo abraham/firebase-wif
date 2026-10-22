@@ -13,6 +13,8 @@ import {
   providerName,
   repoPrincipalSet,
   REQUIRED_MAPPING_KEYS,
+  roleLabel,
+  runtimeLabel,
   serviceAccountEmail,
   serviceAccountProject,
   validatePoolOrProvider,
@@ -103,6 +105,21 @@ describe('service accounts', () => {
     expect(defaultServiceAccountId(42)).toBe('github-42');
     expect(defaultComputeServiceAccount('123')).toBe('123-compute@developer.gserviceaccount.com');
     expect(managedDescription('o/r', 42)).toBe(`${MANAGED_MARKER} for o/r (42)`);
+  });
+});
+
+describe('labels', () => {
+  it('names roles in plain language', () => {
+    expect(roleLabel('roles/datastore.indexAdmin')).toBe('Firestore index admin');
+    expect(roleLabel('roles/cloudscheduler.admin')).toBe('cloudscheduler admin');
+    expect(roleLabel('projects/demo-project/roles/deployBot')).toBe('deploy bot');
+  });
+
+  it('names runtime service accounts in plain language', () => {
+    const ctx = { projectId: 'demo-project', projectNumber: '123' };
+    expect(runtimeLabel('123-compute@developer.gserviceaccount.com', ctx)).toBe('the default compute account');
+    expect(runtimeLabel('demo-project@appspot.gserviceaccount.com', ctx)).toBe('the App Engine default account');
+    expect(runtimeLabel('runner@demo-project.iam.gserviceaccount.com', ctx)).toBe('the runner account');
   });
 });
 

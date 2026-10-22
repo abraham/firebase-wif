@@ -11,8 +11,10 @@ export const serviceAccount: Resource = {
     const email = rt.ctx.serviceAccount;
     const current = await readServiceAccount(rt);
     if (current.kind === 'skipped') return { kind: 'skipped', message: current.reason };
-    if (current.kind === 'missing') return drift([change(this.id, 'create', `create service account ${email}`)]);
-    if (current.value.disabled) return drift([change(this.id, 'enable', `enable service account ${email}`)]);
+    if (current.kind === 'missing')
+      return drift([change(this.id, 'create', `create service account ${email}`, 'create the deploy account')]);
+    if (current.value.disabled)
+      return drift([change(this.id, 'enable', `enable service account ${email}`, 'turn the deploy account back on')]);
     return { kind: 'ok', message: `${email} exists` };
   },
   async apply(rt, w) {
