@@ -41,16 +41,25 @@ export const provider: Resource = {
   scope: 'trust-chain',
   async evaluate(rt) {
     const id = providerId(rt.ctx);
+    const create = change(this.id, 'create', `create provider ${id}`, 'set up GitHub sign-in for this repo');
     const parent = await readPool(rt);
     if (parent.kind === 'skipped') return { kind: 'skipped', message: parent.reason };
-    if (parent.kind === 'missing') return drift([change(this.id, 'create', `create provider ${id}`)]);
+    if (parent.kind === 'missing') return drift([create]);
 
     const current = await readProvider(rt);
     if (current.kind === 'skipped') return { kind: 'skipped', message: current.reason };
-    if (current.kind === 'missing') return drift([change(this.id, 'create', `create provider ${id}`)]);
+    if (current.kind === 'missing') return drift([create]);
 
     const value = current.value;
-    if (value.state === 'DELETED') return drift([change(this.id, 'undelete', `restore deleted provider ${id}`)]);
+    if (value.state === 'DELETED')
+      return drift([
+        change(
+          this.id,
+          'undelete',
+          `restore deleted provider ${id}`,
+          'restore the deleted GitHub sign-in for this repo',
+        ),
+      ]);
     if (value.oidc?.issuerUri !== ISSUER) {
       const message = `Provider ${id} uses issuer ${value.oidc?.issuerUri ?? '(none)'}, not GitHub Actions.`;
       const fix = 'Pass --provider with a different provider ID.';
@@ -62,10 +71,14 @@ export const provider: Resource = {
       };
     }
     const changes: Change[] = [];
-    if (value.disabled) changes.push(change(this.id, 'update', `re-enable provider ${id}`));
+    if (value.disabled)
+      changes.push(change(this.id, 'update', `re-enable provider ${id}`, 'turn GitHub sign-in back on for this repo'));
     const desired = desiredAttributeMapping();
     const missing = REQUIRED_MAPPING_KEYS.filter((key) => value.attributeMapping?.[key] !== desired[key]);
-    if (missing.length) changes.push(change(this.id, 'update', `map ${missing.join(', ')} on provider ${id}`));
+    if (missing.length)
+      changes.push(
+        change(this.id, 'update', `map ${missing.join(', ')} on provider ${id}`, 'update the GitHub sign-in settings'),
+      );
     return changes.length ? drift(changes) : { kind: 'ok', message: `${id} trusts ${ISSUER}` };
   },
   async apply(rt, w) {

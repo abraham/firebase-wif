@@ -178,6 +178,7 @@ interface Change {
   resource: ResourceId;
   action: ChangeAction;
   description: string;
+  summary: string; // plain-language description without resource names, emails, or role IDs
   manual?: boolean; // can't be applied with the given access; description says what to do by hand
 }
 
@@ -263,7 +264,7 @@ The table is the `ErrorDetails` type, keyed by `ErrorCode`, and `FirebaseWifErro
 
 ## Compatibility
 
-Exported functions and their signatures, exported types, `Options` fields and defaults, `Check.id` values, `Change.action` values, `FirebaseWifError.code` values, and the `details` shapes above are public API. Changing or removing them is a breaking change under the versioning rules in `release-and-ci.md`. `message`, `fix`, and `Change.description` strings are for people and may change in any release; code should branch on `code`, `id`, and `action`.
+Exported functions and their signatures, exported types, `Options` fields and defaults, `Check.id` values, `Change.action` values, `FirebaseWifError.code` values, and the `details` shapes above are public API. Changing or removing them is a breaking change under the versioning rules in `release-and-ci.md`. `message`, `fix`, `Change.description`, and `Change.summary` strings are for people and may change in any release; code should branch on `code`, `id`, and `action`.
 
 These are additions, not breaking changes, and may come in a minor release: new fields on results and options, and new members of `CheckId`, `ResourceId`, `ChangeAction`, and `ErrorCode`. Code that switches over those unions should handle values it doesn't know.
 

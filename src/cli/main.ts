@@ -111,7 +111,7 @@ const run = async (args: CliArgs, deps: CliDeps, output: Output): Promise<number
     const outcome =
       args.command === 'setup'
         ? await runSetup(options, { args, output, sources, ask, interactive })
-        : await runStatus(options, { output, sources });
+        : await runStatus(options, { output, sources, detailed: args.detailed });
 
     worst = Math.max(worst, outcome.code);
     // Without a home context to share, later aliases would plan a chain of their own.

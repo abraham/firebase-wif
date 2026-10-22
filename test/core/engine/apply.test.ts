@@ -5,8 +5,18 @@ import { FirebaseWifError, HttpError, WriteError } from '../../../src/core/error
 import type { Change } from '../../../src/core/types.js';
 import { createConfiguredFakes } from '../../../src/testing/index.js';
 
-const failed: Change = { resource: 'gcp.pool', action: 'create', description: 'create workload identity pool github' };
-const done: Change = { resource: 'gcp.apis', action: 'enable', description: 'enable iam.googleapis.com' };
+const failed: Change = {
+  resource: 'gcp.pool',
+  action: 'create',
+  description: 'create workload identity pool github',
+  summary: 'create the GitHub identity pool',
+};
+const done: Change = {
+  resource: 'gcp.apis',
+  action: 'enable',
+  description: 'enable iam.googleapis.com',
+  summary: 'turn on 1 Google Cloud API',
+};
 
 describe('applyError', () => {
   it('wraps other errors as APPLY_FAILED with what was applied', () => {

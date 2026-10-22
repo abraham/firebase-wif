@@ -24,7 +24,7 @@ In the order `setup` applies them:
 
 The severity is the check status when the resource needs changes. `gcp.runtime-sa-user` only exists with the `functions` preset. In a project that reuses another project's trust chain, only `project` resources are reconciled (see `multi-project.md`).
 
-Each change has an action (`create`, `update`, `undelete`, `enable`, `bind`, `unbind`, or `set`) and a description that says exactly what will happen, such as `grant roles/firebasehosting.admin on demo-project to github-123@demo-project.iam.gserviceaccount.com`.
+Each change has an action (`create`, `update`, `undelete`, `enable`, `bind`, `unbind`, or `set`), a description that says exactly what will happen, such as `grant roles/firebasehosting.admin on demo-project to github-123@demo-project.iam.gserviceaccount.com`, and a plain-language summary without long identifiers, such as `grant Firebase Hosting admin access`. Roles firebase-wif doesn't know by name are summarized from their ID, and functions runtime service accounts by kind (`the default compute account`, `the App Engine default account`).
 
 ## Reading
 

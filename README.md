@@ -148,6 +148,7 @@ Useful options (`--help` lists them all):
 - `--environment <name>`, `--any-branch`: the GitHub environment to create, and let any branch (and so pull requests) deploy to it instead of only the default branch.
 - `--adopt`: reuse a setup made by `setup-wif.sh` or hoverboard (`GCP_WIF_PROVIDER`/`GCP_DEPLOY_SA` or `WIF_PROVIDER`/`DEPLOY_SERVICE_ACCOUNT` variables).
 - `--all-aliases`: run for every project in `.firebaserc`. The first project holds the pool, provider, and service account; the others only get APIs and deploy roles.
+- `--detailed`: show resource names, emails, and role IDs instead of plain-language summaries.
 - `--json`: machine-readable output.
 
 Exit codes: `0` ok, `1` a check failed, `2` usage error, `3` missing credentials or permissions.

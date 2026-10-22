@@ -21,8 +21,13 @@ export interface Resource {
   apply(rt: Runtime, w: Writer): Promise<void>;
 }
 
-export const change = (resource: ResourceId, action: ChangeAction, description: string, manual = false): Change =>
-  manual ? { resource, action, description, manual } : { resource, action, description };
+export const change = (
+  resource: ResourceId,
+  action: ChangeAction,
+  description: string,
+  summary: string,
+  manual = false,
+): Change => (manual ? { resource, action, description, summary, manual } : { resource, action, description, summary });
 
 export const drift = (changes: Change[], fix?: string): Outcome => ({
   kind: 'drift',

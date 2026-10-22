@@ -24,6 +24,7 @@ Options:
   --branch <name>               Branch allowed to deploy (default: the repo's default branch)
   --any-branch                  Let any branch deploy to the environment
   --variable-prefix <prefix>    Repo variable prefix (default: ${DEFAULTS.variablePrefix})
+  --detailed                    Show resource names, emails, role IDs, and check IDs
   --json                        Print JSON
   --cwd <dir>                   Directory to look for firebase.json and the git remote
   -h, --help                    Show this help
@@ -51,6 +52,7 @@ const OPTIONS = {
   'any-branch': { type: 'boolean' },
   branch: { type: 'string' },
   'variable-prefix': { type: 'string' },
+  detailed: { type: 'boolean' },
   json: { type: 'boolean' },
   cwd: { type: 'string' },
   'dry-run': { type: 'boolean' },
@@ -80,6 +82,7 @@ export interface CliArgs {
   branch: string | undefined;
   anyBranch: boolean;
   variablePrefix: string;
+  detailed: boolean;
   json: boolean;
   cwd: string | undefined;
   dryRun: boolean;
@@ -144,6 +147,7 @@ export const parseCli = (argv: readonly string[]): ParseResult => {
       branch: values.branch,
       anyBranch: Boolean(values['any-branch']),
       variablePrefix: values['variable-prefix'] ?? DEFAULTS.variablePrefix,
+      detailed: Boolean(values.detailed),
       json: Boolean(values.json),
       cwd: values.cwd,
       dryRun: Boolean(values['dry-run']),

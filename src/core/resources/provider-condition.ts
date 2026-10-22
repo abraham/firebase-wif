@@ -18,6 +18,7 @@ export const providerCondition: Resource = {
       return { kind: 'skipped', message: `provider ${id} doesn't exist yet` };
     }
     const { repo, repoId } = rt.ctx;
+    const limit = 'only let this repo sign in';
     const analysis = analyzeCondition(current.value.attributeCondition, repoId, repo);
     switch (analysis.kind) {
       case 'pinned':
@@ -33,14 +34,19 @@ export const providerCondition: Resource = {
         };
       }
       case 'missing':
-        return drift([change(this.id, 'update', `limit provider ${id} to ${repo} (no attribute condition)`)]);
+        return drift([change(this.id, 'update', `limit provider ${id} to ${repo} (no attribute condition)`, limit)]);
       case 'name-only':
         return drift([
-          change(this.id, 'update', `pin provider ${id} to repository ID ${repoId} instead of the name ${repo}`),
+          change(
+            this.id,
+            'update',
+            `pin provider ${id} to repository ID ${repoId} instead of the name ${repo}`,
+            "only let this repo sign in, even if it's renamed",
+          ),
         ]);
       case 'loose':
         return drift([
-          change(this.id, 'update', `limit provider ${id} to ${repo} (condition doesn't pin a repository ID)`),
+          change(this.id, 'update', `limit provider ${id} to ${repo} (condition doesn't pin a repository ID)`, limit),
         ]);
     }
   },

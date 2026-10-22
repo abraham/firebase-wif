@@ -47,11 +47,25 @@ export const environment: Resource = {
   async evaluate(rt) {
     const env = rt.ctx.environment;
     if (!env) return { kind: 'skipped', message: 'environment disabled' };
+    const anyBranch = (manual: boolean) =>
+      change(
+        this.id,
+        'set',
+        `allow any branch to deploy to ${env.name}`,
+        `let any branch deploy to ${env.name}`,
+        manual,
+      );
     const createAll = (manual: boolean) => [
-      change(this.id, 'create', `create environment ${env.name}`, manual),
+      change(this.id, 'create', `create environment ${env.name}`, `create the ${env.name} environment`, manual),
       env.branch === false
-        ? change(this.id, 'set', `allow any branch to deploy to ${env.name}`, manual)
-        : change(this.id, 'create', `allow only ${env.branch} to deploy to ${env.name}`, manual),
+        ? anyBranch(manual)
+        : change(
+            this.id,
+            'create',
+            `allow only ${env.branch} to deploy to ${env.name}`,
+            `only let ${env.branch} deploy to ${env.name}`,
+            manual,
+          ),
     ];
     if (!rt.github) return { kind: 'skipped', message: 'no GitHub credentials', changes: createAll(true) };
 
@@ -63,21 +77,34 @@ export const environment: Resource = {
 
     if (env.branch === false) {
       if (!current.value.deployment_branch_policy) return { kind: 'ok', message: `${env.name} allows any branch` };
-      return drift(
-        [change(this.id, 'set', `allow any branch to deploy to ${env.name}`, manual)],
-        manual ? ADMIN_FIX : undefined,
-      );
+      return drift([anyBranch(manual)], manual ? ADMIN_FIX : undefined);
     }
 
     const changes: Change[] = [];
     if (needsBranchPolicy(current.value)) {
-      changes.push(change(this.id, 'update', `limit ${env.name} to selected branches`, manual));
+      changes.push(
+        change(
+          this.id,
+          'update',
+          `limit ${env.name} to selected branches`,
+          `limit which branches deploy to ${env.name}`,
+          manual,
+        ),
+      );
     }
     const branches = await readBranchPolicies(rt, env.name);
     if (branches.kind === 'skipped') return { kind: 'skipped', message: branches.reason };
     const names = branches.kind === 'found' ? (branches.value.branch_policies ?? []).map((p) => p.name) : [];
     if (!names.includes(env.branch))
-      changes.push(change(this.id, 'create', `allow ${env.branch} to deploy to ${env.name}`, manual));
+      changes.push(
+        change(
+          this.id,
+          'create',
+          `allow ${env.branch} to deploy to ${env.name}`,
+          `let ${env.branch} deploy to ${env.name}`,
+          manual,
+        ),
+      );
     if (!changes.length) return { kind: 'ok', message: `${env.name} only deploys from ${env.branch}` };
     return drift(changes, manual ? ADMIN_FIX : undefined);
   },

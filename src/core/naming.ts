@@ -88,6 +88,35 @@ export const defaultComputeServiceAccount = (projectNumber: string): string =>
 
 export const defaultAppEngineServiceAccount = (projectId: string): string => `${projectId}@appspot.gserviceaccount.com`;
 
+const ROLE_LABELS: Record<string, string> = {
+  'roles/cloudfunctions.admin': 'Cloud Functions admin',
+  'roles/datastore.indexAdmin': 'Firestore index admin',
+  'roles/firebasehosting.admin': 'Firebase Hosting admin',
+  'roles/firebaserules.admin': 'Firebase Rules admin',
+  'roles/firebasestorage.viewer': 'Cloud Storage for Firebase viewer',
+  'roles/serviceusage.serviceUsageConsumer': 'Service Usage consumer',
+  'roles/storage.bucketViewer': 'Storage bucket viewer',
+};
+
+/** A plain-language name for a role, like `Firestore index admin` for `roles/datastore.indexAdmin`. */
+export const roleLabel = (role: string): string => {
+  const known = ROLE_LABELS[role];
+  if (known) return known;
+  return role
+    .split('/')
+    .pop()!
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[._]/g, ' ')
+    .toLowerCase();
+};
+
+/** A plain-language name for a functions runtime service account. */
+export const runtimeLabel = (email: string, ctx: { projectId: string; projectNumber: string }): string => {
+  if (email === defaultComputeServiceAccount(ctx.projectNumber)) return 'the default compute account';
+  if (email === defaultAppEngineServiceAccount(ctx.projectId)) return 'the App Engine default account';
+  return `the ${email.split('@')[0]} account`;
+};
+
 export const managedDescription = (repo: string, repoId: number): string => `${MANAGED_MARKER} for ${repo} (${repoId})`;
 
 export const desiredAttributeMapping = (): Record<string, string> => ({

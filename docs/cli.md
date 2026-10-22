@@ -18,26 +18,27 @@ At most one command is allowed. Anything else, including extra positional argume
 
 ## Options
 
-| Option                                           | Default                                                       | Description                                                                     |
-| ------------------------------------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `--project <id\|alias>`                          | `.firebaserc` default                                         | Project ID, or an alias from `.firebaserc`                                      |
-| `--all-aliases`                                  | off                                                           | Run once per project in `.firebaserc` (see below)                               |
-| `--repo <owner/name>`                            | git remote                                                    | GitHub repository                                                               |
-| `--pool <id>`                                    | `github`                                                      | Workload identity pool ID                                                       |
-| `--provider <id>`                                | `github-<repoId>`                                             | Provider ID                                                                     |
-| `--service-account <id\|email>`                  | `github-<repoId>`                                             | Deploy service account ID or email                                              |
-| `--preset <name>` (repeatable)                   | from `firebase.json`                                          | `hosting`, `firestore`, `storage`, or `functions`                               |
-| `--role <role>` (repeatable)                     |                                                               | Extra project role on top of the presets                                        |
-| `--runtime-service-account <email>` (repeatable) | the project's default compute and App Engine service accounts | Functions runtime service accounts the deploy service account may act as        |
-| `--environment <name>`                           | `production`                                                  | GitHub environment to create or check                                           |
-| `--no-environment`                               | off                                                           | Skip the GitHub environment                                                     |
-| `--branch <name>`                                | the repo's default branch                                     | Branch allowed to deploy to the environment                                     |
-| `--any-branch`                                   | off                                                           | Let any branch deploy to the environment                                        |
-| `--variable-prefix <prefix>`                     | `FIREBASE_WIF_`                                               | Repo variables are `<prefix>PROVIDER` and `<prefix>SERVICE_ACCOUNT`             |
-| `--json`                                         | off                                                           | Print JSON instead of text (see JSON output)                                    |
-| `--cwd <dir>`                                    | the current directory                                         | Where to look for `firebase.json`, `.firebaserc`, workflows, and the git remote |
-| `-h`, `--help`                                   |                                                               | Print the usage                                                                 |
-| `--version`                                      |                                                               | Print the version                                                               |
+| Option                                           | Default                                                       | Description                                                                           |
+| ------------------------------------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `--project <id\|alias>`                          | `.firebaserc` default                                         | Project ID, or an alias from `.firebaserc`                                            |
+| `--all-aliases`                                  | off                                                           | Run once per project in `.firebaserc` (see below)                                     |
+| `--repo <owner/name>`                            | git remote                                                    | GitHub repository                                                                     |
+| `--pool <id>`                                    | `github`                                                      | Workload identity pool ID                                                             |
+| `--provider <id>`                                | `github-<repoId>`                                             | Provider ID                                                                           |
+| `--service-account <id\|email>`                  | `github-<repoId>`                                             | Deploy service account ID or email                                                    |
+| `--preset <name>` (repeatable)                   | from `firebase.json`                                          | `hosting`, `firestore`, `storage`, or `functions`                                     |
+| `--role <role>` (repeatable)                     |                                                               | Extra project role on top of the presets                                              |
+| `--runtime-service-account <email>` (repeatable) | the project's default compute and App Engine service accounts | Functions runtime service accounts the deploy service account may act as              |
+| `--environment <name>`                           | `production`                                                  | GitHub environment to create or check                                                 |
+| `--no-environment`                               | off                                                           | Skip the GitHub environment                                                           |
+| `--branch <name>`                                | the repo's default branch                                     | Branch allowed to deploy to the environment                                           |
+| `--any-branch`                                   | off                                                           | Let any branch deploy to the environment                                              |
+| `--variable-prefix <prefix>`                     | `FIREBASE_WIF_`                                               | Repo variables are `<prefix>PROVIDER` and `<prefix>SERVICE_ACCOUNT`                   |
+| `--detailed`                                     | off                                                           | Show resource names, emails, role IDs, and check IDs in text output (see Text output) |
+| `--json`                                         | off                                                           | Print JSON instead of text (see JSON output)                                          |
+| `--cwd <dir>`                                    | the current directory                                         | Where to look for `firebase.json`, `.firebaserc`, workflows, and the git remote       |
+| `-h`, `--help`                                   |                                                               | Print the usage                                                                       |
+| `--version`                                      |                                                               | Print the version                                                                     |
 
 `setup` only:
 
@@ -77,7 +78,7 @@ Runs the engine's `status` and prints the report. The CLI always passes `adopt: 
 2. If the operator is missing permissions for Google Cloud changes, the engine throws `MISSING_PERMISSIONS` before `confirm` is called: print the error, which lists the permissions, and exit 3. Nothing has been written. `--dry-run` still prints the plan, so it shows what needs those permissions.
 3. `confirm` prints the plan. If it's empty, print `Already set up.` and exit 0. With `--dry-run`, the plan is printed and the run exits 0.
 4. If the plan has changes firebase-wif can make itself (not only manual steps) and `--yes` wasn't passed, ask `Apply these changes? [y/N]`. Declining prints `Cancelled; nothing changed.` and exits 1. When the CLI can't prompt (stdin or stdout isn't a terminal, or `--json`), it prints `Pass --yes to apply changes without a prompt.` and exits 2.
-5. Apply. Each change prints `✓ <description>` as it finishes, and retries print `retrying in <n>s: <reason>`.
+5. Apply. Each change prints `✓ <summary>` as it finishes (`✓ <description>` with `--detailed`), and retries print `retrying in <n>s` (`retrying in <n>s: <reason>` with `--detailed`).
 6. Print the final status report, then `Do by hand:` with any manual steps, then, if anything was applied, a note that IAM changes can take a few minutes and a link to the README workflow examples.
 
 A plan with only manual steps (for example, repo variables without GitHub access) skips the prompt and goes straight to the final status.
@@ -101,7 +102,18 @@ Runs the command once per project in `.firebaserc`: each project once, under its
 
 Reports and plans go to stdout. Errors go to stderr as the message, then `  fix: <fix>` when there is one.
 
-Every report and plan starts with a header that says where each value came from:
+Text output has two modes. The default, simple, uses plain language and leaves out long identifiers: project numbers, repo IDs, resource names, emails, role IDs, and check IDs. `--detailed` shows them. Steps under `Do by hand` and `fix:` lines always keep exact names and values, because someone has to type them. Errors are the same in both modes.
+
+Every report and plan starts with a header that says where each value came from. Simple:
+
+```
+firebase-wif status
+  project  demo-project (from .firebaserc default)
+  repo     octo-org/site (from git remote origin)
+  home     other-project (shares its provider and service account)
+```
+
+Detailed:
 
 ```
 firebase-wif status
@@ -110,9 +122,19 @@ firebase-wif status
   home     other-project (shares its provider and service account)
 ```
 
-The `home` line only appears when another project holds the trust chain. A `setup` plan adds `adopt` lines when it's adopting a legacy setup.
+The `home` line only appears when another project holds the trust chain. A `setup` plan adds an `adopt` line when it's adopting a legacy setup: the variables it found when simple, and the provider and service account when detailed.
 
-Status checks are grouped under `Local`, `Google Cloud`, and `GitHub`, one per line, with a symbol (`✓` pass, `!` warn, `✗` fail, `-` skipped), the check ID, and its message. Checks that didn't pass add a `fix:` line. The report ends with a summary such as `1 failed, 2 warnings, 17 passed, 1 skipped`; the skipped count is left out when it's zero.
+Status checks are grouped under `Local`, `Google Cloud`, and `GitHub`, one per line, with a symbol (`✓` pass, `!` warn, `✗` fail, `-` skipped). Simple output names each check in plain words, and for a check that didn't pass, adds the summaries of its changes (or its message when it has none, or when it was skipped). Detailed output shows the check ID and its message. Checks that didn't pass add a `fix:` line. The report ends with a summary such as `1 failed, 2 warnings, 17 passed, 1 skipped`; the skipped count is left out when it's zero.
+
+```
+  Google Cloud
+    ✓ Project found
+    ✗ Deploy account access
+        grant Firebase Hosting admin access
+        fix: firebase-wif setup
+```
+
+Detailed:
 
 ```
   Google Cloud
@@ -121,15 +143,25 @@ Status checks are grouped under `Local`, `Google Cloud`, and `GitHub`, one per l
         fix: firebase-wif setup
 ```
 
-A plan lists `Changes` and then `Do by hand`. Each change has a sign for its action: `+` for create, enable, undelete, and bind; `~` for set and update; `-` for unbind.
+A plan lists `Changes` and then `Do by hand`. Each change has a sign for its action: `+` for create, enable, undelete, and bind; `~` for set and update; `-` for unbind. Changes show their `summary`, or their `description` with `--detailed`; steps to do by hand always show their `description`.
+
+```
+  Changes
+    + create the GitHub identity pool
+    + grant Firestore index admin access
+    ~ save repo variable FIREBASE_WIF_PROVIDER
+
+  Do by hand
+    - set repo variable FIREBASE_WIF_SERVICE_ACCOUNT to github-987654321@...
+```
+
+Detailed:
 
 ```
   Changes
     + create workload identity pool github
+    + grant roles/datastore.indexAdmin on demo-project to github-987654321@...
     ~ set repo variable FIREBASE_WIF_PROVIDER to projects/...
-
-  Do by hand
-    - set repo variable FIREBASE_WIF_SERVICE_ACCOUNT to github-987654321@...
 ```
 
 ## JSON output
@@ -176,8 +208,8 @@ Commands, flags, exit codes, and the JSON output shapes are public API: changing
 
 ## How it's tested
 
-- `test/cli/main.test.ts` runs `main()` in-process with injected dependencies: the `/testing` fakes as the Google and GitHub clients, a temporary repo directory, a fake `git` remote, captured stdout and stderr, an injectable terminal check and prompt, and an injectable abort signal standing in for Ctrl-C. It covers the full status report as an inline snapshot, every exit code, JSON output, `--help` and `--version` ahead of other errors, the prompt and `--yes` paths, missing permissions before any prompt, adoption, missing GitHub credentials, interrupting during apply and at a prompt, `--all-aliases` in text and JSON, and that `--dry-run` and declined prompts write nothing.
-- `test/cli/render.test.ts` checks the text rendering of reports and plans directly: grouping, symbols and signs, fix lines, summary counts, and the `home` and `adopt` header lines.
+- `test/cli/main.test.ts` runs `main()` in-process with injected dependencies: the `/testing` fakes as the Google and GitHub clients, a temporary repo directory, a fake `git` remote, captured stdout and stderr, an injectable terminal check and prompt, and an injectable abort signal standing in for Ctrl-C. It covers the full status report in both modes and the simple and detailed plans as inline snapshots, every exit code, JSON output, `--help` and `--version` ahead of other errors, the prompt and `--yes` paths, missing permissions before any prompt, adoption, missing GitHub credentials, interrupting during apply and at a prompt, `--all-aliases` in text and JSON, and that `--dry-run` and declined prompts write nothing.
+- `test/cli/render.test.ts` checks the text rendering of reports and plans directly in both modes: grouping, symbols and signs, plain check labels and change summaries, fix lines, summary counts, and the `home` and `adopt` header lines.
 - Each module has its own unit tests: `args.test.ts` for parsing and every usage error, `options.test.ts` for how flags map to engine options, `output.test.ts` for text, JSON, `--all-aliases` collection, and interruption, `clients.test.ts`, `prompt.test.ts`, `status.test.ts`, and `setup.test.ts`.
 - `test/cli/index.test.ts` checks that the bin entry point passes `process.argv` to `main()`, ties SIGINT to its abort signal, and sets `process.exitCode` from its result.
 - `test/structure.test.ts` checks that `src/cli/` imports only from the public entry points.

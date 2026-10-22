@@ -9,8 +9,8 @@ import type { Change } from '../../../src/core/types.js';
 import { createConfiguredFakes } from '../../../src/testing/index.js';
 import { runtimeFor } from '../../helpers.js';
 
-const create: Change = { resource: 'gcp.pool', action: 'create', description: 'create pool' };
-const variable: Change = { resource: 'gh.variables', action: 'set', description: 'set it' };
+const create: Change = { resource: 'gcp.pool', action: 'create', description: 'create pool', summary: 'create' };
+const variable: Change = { resource: 'gh.variables', action: 'set', description: 'set it', summary: 'set' };
 
 describe('runPreflight', () => {
   it('lists the setup permissions the operator lacks', async () => {

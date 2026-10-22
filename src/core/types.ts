@@ -125,6 +125,8 @@ export interface Change {
   resource: ResourceId;
   action: ChangeAction;
   description: string;
+  /** Plain-language `description` without resource names, emails, or role IDs. */
+  summary: string;
   /** Can't be applied with the given credentials; `description` says what to do by hand. */
   manual?: boolean;
 }
