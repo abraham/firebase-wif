@@ -9,7 +9,7 @@ A preset is the set of project roles and APIs the deploy service account needs t
 
 | Preset      | `firebase.json` key | Project roles                                                                                                                                    | APIs                                                                  |
 | ----------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
-| `hosting`   | `hosting`           | `roles/firebasehosting.admin`                                                                                                                    | `firebasehosting`                                                     |
+| `hosting`   | `hosting`           | `roles/firebasehosting.admin`, `roles/serviceusage.serviceUsageConsumer`                                                                         | `firebasehosting`                                                     |
 | `firestore` | `firestore`         | `roles/firebaserules.admin`, `roles/datastore.indexAdmin`, `roles/serviceusage.serviceUsageConsumer`                                             | `firestore`, `firebaserules`                                          |
 | `storage`   | `storage`           | `roles/firebaserules.admin`, `roles/firebasestorage.viewer`, `roles/storage.bucketViewer`, `roles/serviceusage.serviceUsageConsumer`             | `firebasestorage`, `firebaserules`                                    |
 | `functions` | `functions`         | `roles/cloudfunctions.admin`, `roles/serviceusage.serviceUsageConsumer`, plus `roles/iam.serviceAccountUser` on runtime service accounts (below) | `cloudfunctions`, `cloudbuild`, `artifactregistry`, `run`, `eventarc` |
@@ -18,8 +18,8 @@ Every API name ends in `.googleapis.com`. The trust chain itself always needs `i
 
 Why some roles are there:
 
-- `hosting` is only `roles/firebasehosting.admin`, which covers both live and preview channel deploys.
-- `roles/serviceusage.serviceUsageConsumer` is in every other preset because `firebase-tools` checks enabled APIs when it deploys those products.
+- `roles/firebasehosting.admin` covers both live and preview channel deploys.
+- `roles/serviceusage.serviceUsageConsumer` is in every preset because `firebase-tools` checks that each product's API is enabled when it deploys (for Hosting, since `firebase-tools` 15.34.1).
 - `storage` includes `roles/storage.bucketViewer` because the Storage rules deploy looks up the default bucket (firebase/firebase-tools#6593).
 
 ## Choosing presets

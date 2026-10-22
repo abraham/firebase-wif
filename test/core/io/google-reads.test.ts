@@ -66,7 +66,9 @@ describe('readers', () => {
     const rt = await runtimeFor(fakes);
     expect(await readProjectPolicy(rt)).toMatchObject({
       kind: 'found',
-      value: { bindings: [{ role: 'roles/firebasehosting.admin' }] },
+      value: {
+        bindings: [{ role: 'roles/firebasehosting.admin' }, { role: 'roles/serviceusage.serviceUsageConsumer' }],
+      },
     });
     expect(fakes.google.calls[0]).toEqual({
       method: 'POST',

@@ -19,7 +19,8 @@ export const BASE_APIS: readonly string[] = [
 
 export const PRESETS: Readonly<Record<PresetName, Preset>> = {
   hosting: {
-    roles: ['roles/firebasehosting.admin'],
+    // firebase-tools 15.34.1+ checks that the Hosting API is enabled (serviceusage.services.get).
+    roles: ['roles/firebasehosting.admin', 'roles/serviceusage.serviceUsageConsumer'],
     apis: ['firebasehosting.googleapis.com'],
   },
   firestore: {
