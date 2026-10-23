@@ -1,6 +1,6 @@
 {
   "name": "@abraham/firebase-wif",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Set up and check Firebase deploys from GitHub Actions with Workload Identity Federation",
   "license": "MIT",
   "repository": {

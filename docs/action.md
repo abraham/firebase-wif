@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: abraham/firebase-wif@v0.2.0
+      - uses: abraham/firebase-wif@v0.2.1
         with:
           workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
           service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}

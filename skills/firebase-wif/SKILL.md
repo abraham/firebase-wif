@@ -11,7 +11,7 @@ Rewrites Firebase deploy jobs to get short-lived Google credentials from the job
 ## Before editing
 
 - The Action reads two repo variables that `npx @abraham/firebase-wif setup` creates: `FIREBASE_WIF_PROVIDER` and `FIREBASE_WIF_SERVICE_ACCOUNT`. If `npx @abraham/firebase-wif status` shows them failing, tell the user to run `setup` themselves. Never run `setup` without asking: it changes Google Cloud IAM and GitHub settings.
-- Find the latest version with `npm view @abraham/firebase-wif version` (or `gh release view --repo abraham/firebase-wif --json tagName -q .tagName`). Pin the full tag, like `abraham/firebase-wif@v0.2.0`. There are no moving `@v0` tags, and `@main` must never be used for a credentials action.
+- Find the latest version with `npm view @abraham/firebase-wif version` (or `gh release view --repo abraham/firebase-wif --json tagName -q .tagName`). Pin the full tag, like `abraham/firebase-wif@v0.2.1`. There are no moving `@v0` tags, and `@main` must never be used for a credentials action.
 
 ## Find the deploy jobs
 
@@ -32,7 +32,7 @@ Leave jobs that don't deploy to Firebase alone.
 
    ```yaml
    - id: wif
-     uses: abraham/firebase-wif@v0.2.0
+     uses: abraham/firebase-wif@v0.2.1
      with:
        workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
        service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
@@ -94,7 +94,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: wif
-        uses: abraham/firebase-wif@v0.2.0
+        uses: abraham/firebase-wif@v0.2.1
         with:
           workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
           service_account: ${{ vars.FIREBASE_WIF_SERVICE_ACCOUNT }}
