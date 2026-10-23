@@ -12,7 +12,7 @@
     "node": ">=22"
   },
   "bin": {
-    "firebase-wif": "./dist/cli/index.js"
+    "firebase-wif": "dist/cli/index.js"
   },
   "exports": {
     ".": {
