@@ -1,0 +1,42 @@
+name: Publish Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@abraham/firebase-wif/v/${{ steps.version.outputs.version }}
+    concurrency:
+      group: deploy-npm
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      # npm trusted publishing exchanges the job's OIDC token, so no npm token is stored.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: lts/*
+      - id: version
+        name: Check that the tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match package.json version $version."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - run: npm ci
+      # prepack builds the package.
+      - run: npm publish
