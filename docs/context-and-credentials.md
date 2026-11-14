@@ -15,6 +15,7 @@ Before it can check or change anything, firebase-wif needs to know which project
 2. The Firebase directory is the nearest directory at or above `cwd`, up to the git root, with a `firebase.json` or `.firebaserc`.
 3. `firebase.json` and `.firebaserc` are read from the Firebase directory. A file that exists but isn't valid JSON fails with `INVALID_NAME` ("`<path>` is not valid JSON").
 4. `.gitignore` and the workflow files (`.github/workflows/*.yml` and `*.yaml`, in name order) are read from the git root, or the Firebase directory, or `cwd`.
+5. For monorepos, `firebase.json` is also read from each directory a workflow deploy step runs `firebase` in, as `deployFirebaseJsons` keyed by path from the git root (like `packages/server/firebase.json`). The directory is the step's `working-directory`, else the job's or workflow's `defaults.run.working-directory`, `entryPoint` for `FirebaseExtended/action-hosting-deploy`, or `PROJECT_PATH` for `w9jds/firebase-action`; it defaults to the root. Directories with expressions, outside the git root, or without a `firebase.json` are skipped, and so is the file from step 3.
 
 These become `LocalFiles`, which the local checks and the workflow check use (see `checks.md`). Missing files are fine; their checks warn or skip.
 
@@ -106,7 +107,7 @@ To run `status`, the caller needs read access: the project's IAM policy, the poo
 
 ## How it's tested
 
-- `test/core/discovery/context.test.ts` and `files.test.ts` use temporary directories to cover the search for the git root and Firebase directory, every project and repository source in order, alias resolution, remote formats, other hosts, invalid JSON, the files read into `LocalFiles`, and alias listing.
+- `test/core/discovery/context.test.ts` and `files.test.ts` use temporary directories to cover the search for the git root and Firebase directory, every project and repository source in order, alias resolution, remote formats, other hosts, invalid JSON, the files read into `LocalFiles` including `firebase.json` from the directories workflows deploy from, and alias listing.
 - `test/core/discovery/clients.test.ts` covers both credential lookups in order, gcloud token refresh, Application Default Credentials (with `google-auth-library` mocked), the clients' requests and headers, and error mapping.
 - `test/gh.test.ts` covers `ghCliClient` with a fake process runner.
 - `test/core/engine/permissions.test.ts` and `engine.test.ts` cover the repository and project lookups, the preflight for home and cross-project runs, and `apply` refusing to write with missing permissions.

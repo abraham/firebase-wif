@@ -91,7 +91,7 @@ When `google` is omitted, `defaultGoogleClient()` is used; when `github` is omit
 | `google`                 | `defaultGoogleClient()`                                       | A `GoogleAuth`                                                                                                                      |
 | `github`                 | `defaultGitHubClient()`                                       | A `GitHubAuth`, or `false` to skip GitHub                                                                                           |
 | `presets`                | `'auto'`                                                      | Preset names, or `'auto'` to derive them from `firebaseJson` (see `presets.md`)                                                     |
-| `firebaseJson`           | `local.firebaseJson`                                          | Parsed `firebase.json`, for `'auto'` presets, when not passing `local`                                                              |
+| `firebaseJson`           | `local.firebaseJson`                                          | Parsed `firebase.json`, for `'auto'` presets; replaces `local`'s `firebase.json` files                                              |
 | `roles`                  | `[]`                                                          | Extra project roles on top of the presets                                                                                           |
 | `runtimeServiceAccounts` | the project's default compute and App Engine service accounts | With the `functions` preset, the runtime service accounts the deploy service account may act as                                     |
 | `names`                  | `github`, `github-<repoId>`, `github-<repoId>`                | `{ pool?, provider?, serviceAccount? }`. Explicit names win over names found through repo variables.                                |
@@ -217,6 +217,7 @@ interface AdoptCandidate {
 
 interface LocalFiles {
   firebaseJson?: Record<string, unknown>;
+  deployFirebaseJsons?: Record<string, Record<string, unknown>>; // other firebase.json files workflows deploy from, keyed by path from the git root
   firebaserc?: { projects?: Record<string, string> };
   gitignore?: string;
   workflows?: Record<string, string>; // contents keyed by path, like '.github/workflows/deploy.yml'

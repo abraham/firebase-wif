@@ -1,7 +1,8 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { FirebaseWifError } from '../errors.js';
 import type { LocalFiles } from '../types.js';
+import { deployDirectories } from '../workflow-steps.js';
 
 const exists = async (path: string): Promise<boolean> => {
   try {
@@ -73,4 +74,24 @@ export const readWorkflows = async (root: string): Promise<Record<string, string
     if (text !== undefined) workflows[`.github/workflows/${entry}`] = text;
   }
   return workflows;
+};
+
+/**
+ * `firebase.json` files in the directories the workflows deploy from, keyed by path from `root`, skipping
+ * `skip` (the one already read) and directories outside `root`.
+ */
+export const readDeployFirebaseJsons = async (
+  root: string,
+  workflows: Record<string, string>,
+  skip: string | undefined,
+): Promise<Record<string, Record<string, unknown>>> => {
+  const found: Record<string, Record<string, unknown>> = {};
+  for (const directory of deployDirectories(workflows)) {
+    const path = resolve(root, directory, 'firebase.json');
+    const key = relative(root, path);
+    if (path === skip || key.startsWith(`..${sep}`) || resolve(key) === key) continue;
+    const firebaseJson = await readJsonFile<Record<string, unknown>>(path);
+    if (firebaseJson) found[key.split(sep).join('/')] = firebaseJson;
+  }
+  return found;
 };

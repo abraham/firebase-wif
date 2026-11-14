@@ -1,4 +1,5 @@
 import { parse } from 'yaml';
+import { isExpression, stepChannel, usesAction, type Channel, type Job, type Step } from '../workflow-steps.js';
 
 export interface WorkflowFinding {
   file: string;
@@ -18,64 +19,20 @@ export interface WorkflowAnalysis {
   parseErrors: string[];
 }
 
-interface Step {
-  uses?: unknown;
-  run?: unknown;
-  with?: Record<string, unknown>;
-}
-
-interface Job {
-  if?: unknown;
-  environment?: unknown;
-  permissions?: unknown;
-  steps?: unknown;
-}
-
 /** The environments deploy jobs should use; `undefined` skips that check. */
 export interface ExpectedEnvironments {
   live?: { name: string; branch: string | false } | undefined;
   preview?: string | undefined;
 }
 
-type Channel = 'live' | 'preview' | 'unknown';
-
-const HOSTING_DEPLOY = 'FirebaseExtended/action-hosting-deploy';
-const FIREBASE_ACTION = 'w9jds/firebase-action';
 const AUTH_ACTIONS = ['abraham/firebase-wif', 'google-github-actions/auth'];
-const LIVE_COMMAND = /\bfirebase(?:-tools)?(?:@\S+)?\s+deploy\b/;
-const PREVIEW_COMMAND = /\bfirebase(?:-tools)?(?:@\S+)?\s+hosting:channel:deploy\b/;
 const SAME_REPO_GUARD = /head\.repo\.(?:full_name|fork)/;
-
-const isExpression = (value: string) => value.includes('${{');
-
-// GitHub resolves action owners and repos case-insensitively.
-const usesAction = (step: Step, actions: string[]) =>
-  typeof step.uses === 'string' &&
-  actions.some((action) => (step.uses as string).toLowerCase().startsWith(`${action.toLowerCase()}@`));
 
 const triggers = (on: unknown): string[] => {
   if (typeof on === 'string') return [on];
   if (Array.isArray(on)) return on.filter((value): value is string => typeof value === 'string');
   if (on && typeof on === 'object') return Object.keys(on);
   return [];
-};
-
-/** What a step deploys to, or `undefined` when it doesn't deploy. */
-const stepChannel = (step: Step): Channel | undefined => {
-  if (usesAction(step, [HOSTING_DEPLOY])) {
-    const channel = step.with?.channelId;
-    if (channel === 'live') return 'live';
-    // An expression may resolve to `live`; anything else is a preview channel.
-    return typeof channel === 'string' && isExpression(channel) && channel.includes('live') ? 'unknown' : 'preview';
-  }
-  if (usesAction(step, [FIREBASE_ACTION])) {
-    const args = typeof step.with?.args === 'string' ? step.with.args : '';
-    if (/^\s*hosting:channel:deploy\b/.test(args)) return 'preview';
-    return /^\s*deploy\b/.test(args) ? 'live' : 'unknown';
-  }
-  if (typeof step.run !== 'string') return undefined;
-  if (LIVE_COMMAND.test(step.run)) return 'live';
-  return PREVIEW_COMMAND.test(step.run) ? 'preview' : undefined;
 };
 
 /** A job deploys live if any step does, so it gets the stricter environment. */

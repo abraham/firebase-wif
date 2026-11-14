@@ -153,7 +153,7 @@ npx @abraham/firebase-wif setup  [options]   # create or repair
 Useful options (`--help` lists them all):
 
 - `--project <id|alias>`, `--repo <owner/name>`: override what's found in `.firebaserc` and the git remote.
-- `--preset hosting|firestore|storage|functions` (repeatable) and `--role <role>`: the deploy roles. By default the presets come from the keys in `firebase.json`.
+- `--preset hosting|firestore|storage|functions` (repeatable) and `--role <role>`: the deploy roles. By default the presets come from the keys in `firebase.json`, and in any other `firebase.json` a workflow deploys from (like `packages/server` in a monorepo).
 - `--dry-run`, `--yes`: print the plan only, or apply without asking.
 - `--prune`: remove roles that are no longer requested from a service account firebase-wif created.
 - `--environment <name>`, `--any-branch`: the GitHub environment to create, and let any branch (and so pull requests) deploy to it instead of only the default branch.
