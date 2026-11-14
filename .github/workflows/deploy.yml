@@ -13,7 +13,12 @@ jobs:
     # Pull requests from forks can't get OIDC tokens.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    environment: test
+    environment:
+      name: test
+      url: ${{ steps.url.outputs.url }}
+    concurrency:
+      group: deploy-preview-${{ github.event.pull_request.number || github.ref_name }}-${{ matrix.example }}
+      cancel-in-progress: true
     permissions:
       contents: read
       id-token: write
@@ -26,9 +31,11 @@ jobs:
       CHANNEL: demo-${{ github.run_number }}-${{ matrix.example }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version-file: .nvmrc
+          node-version: lts/*
       # The action at this commit, rather than a released tag.
       - id: wif
         uses: $/
@@ -59,11 +66,24 @@ jobs:
           PROJECT_ID: ${{ steps.wif.outputs.project_id }}
           PROJECT_PATH: demo
 
-  deploy-success:
+      - id: url
+        name: Find the preview channel URL
+        working-directory: demo
+        run: |
+          url=$(npx --yes firebase-tools hosting:channel:list --json | node -e '
+            const { result } = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            const channel = result.channels.find((c) => c.name.endsWith("/channels/" + process.env.CHANNEL));
+            if (!channel) throw new Error("No channel " + process.env.CHANNEL);
+            console.log(channel.url);
+          ')
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+  deploy-required:
     needs: [deploy]
     # Run even when a dependency fails, since a skipped required check counts as passing.
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
       - name: Check that every deploy passed
         env:

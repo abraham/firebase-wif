@@ -1,9 +1,9 @@
 # Release and CI
 
-Code: `.github/workflows/ci.yml`, `.github/workflows/publish.yml`, `.github/workflows/deploy.yml`, `.github/dependabot.yml`, `package.json`, `.nvmrc`, `.prettierrc.json`, `demo/`
+Code: `.github/workflows/ci.yml`, `.github/workflows/publish.yaml`, `.github/workflows/deploy.yml`, `.github/workflows/actions.lock`, `.github/dependabot.yml`, `package.json`, `.prettierrc.json`, `demo/`
 Tests: `test/structure.test.ts`
 
-The npm package and the Action ship from this repository under one version. Every change lands in `main` through a pull request that passes CI, and a GitHub release publishes it.
+The npm package and the Action ship from this repository under one version. Every change lands in `main` through a pull request that passes CI, and pushing a version tag publishes it.
 
 ## Versioning
 
@@ -17,11 +17,11 @@ What counts as public API, where a change is breaking, is defined in each spec's
 
 ## Publishing
 
-Publishing a GitHub release runs `.github/workflows/publish.yml` in the `npm` environment:
+Pushing a `v*` tag (`npm version <patch|minor|major>`, then `git push --follow-tags`) runs `.github/workflows/publish.yaml` in the `npm` environment, one publish at a time (`deploy-npm`):
 
-1. Check that the release tag is `v` plus the `package.json` version, and fail otherwise.
-2. Build (through `prepack`) and publish with npm trusted publishing: the job's OIDC token authenticates to npm, so no npm token is stored, and the package gets provenance.
-3. A prerelease publishes under the `next` dist-tag; anything else under `latest`.
+1. Check that the tag is `v` plus the `package.json` version, and fail otherwise.
+2. Build (through `prepack`) and publish under `latest` with npm trusted publishing on the newest Node LTS: the job's OIDC token authenticates to npm, so no npm token is stored, and the package gets provenance. The npm trusted publisher is configured for the workflow file `publish.yaml` and the environment `npm`.
+3. The `npm` environment links to the published version on npmjs.com.
 
 Quality checks aren't repeated: they're required to land in `main`. The npm package contains the built library and CLI (`dist/`, without `dist/action/`), the README, and the license.
 
@@ -29,17 +29,19 @@ Quality checks aren't repeated: they're required to land in `main`. The npm pack
 
 `.github/workflows/ci.yml` runs on every pull request and every push to `main`:
 
-| Job             | Runs on                      | Does                                                                                    |
-| --------------- | ---------------------------- | --------------------------------------------------------------------------------------- |
-| `test`          | Node 22, 24, and 26          | `npm ci`, the Prettier check, typecheck, tests, and the library build                   |
-| `action-bundle` | The Node version in `.nvmrc` | Rebuilds `dist/action/` and fails if it differs from the committed bundle               |
-| `ci-success`    |                              | Passes only when every other job succeeded, including when one was cancelled or skipped |
+| Job             | Runs on             | Does                                                                                  |
+| --------------- | ------------------- | ------------------------------------------------------------------------------------- |
+| `lint`          | The newest Node LTS | Checks `.github/workflows/actions.lock` with `gh actions-lock --verify`, and Prettier |
+| `test`          | Node 22, 24, and 26 | `npm ci`, typecheck, tests, the library build, and the consumer typecheck             |
+| `action-bundle` | The newest Node LTS | Rebuilds `dist/action/` and fails if it differs from the committed bundle             |
+| `ci-required`   |                     | Fails when any other job failed or was cancelled                                      |
 
-`ci-success` and `deploy-success` (below) are the required checks for `main`, so the list of jobs can change without editing branch protection. They always run, because GitHub counts a skipped required check as passing.
+`ci-required` and `deploy-required` (below) are the required checks for `main`, so the list of jobs can change without editing the ruleset. They run even when a job they need fails, because GitHub counts a skipped required check as passing. A new job in `ci.yml` goes in `ci-required`'s `needs` in the same change.
 
 Conventions the checks enforce:
 
-- Node 22 or later is supported (`engines.node`). Jobs that need one version read it from `.nvmrc`, which matches the Action's `node24` runtime.
+- Node 22 or later is supported (`engines.node`). The `test` matrix lists every supported LTS major, and its lowest entry matches `engines.node` and the `@types/node` major (Dependabot skips `@types/node` major updates). Jobs that need one version use `lts/*`; the Action bundle targets its `node24` runtime through esbuild's `--target`, whatever Node builds it.
+- Workflows pin actions through `.github/workflows/actions.lock`: run `gh actions-lock` after changing any `uses:`.
 - Prettier formats everything except `dist/action/` and `package-lock.json` (`.prettierignore`).
 - `test/structure.test.ts` fails when a source file has no matching test file.
 - A new esbuild version changes the bundle, so its update needs `npm run build:action` and the rebuilt bundle committed.
@@ -51,8 +53,9 @@ Conventions the checks enforce:
 - It runs on every same-repo pull request and on demand. Pull requests from forks are skipped, because they can't get OIDC tokens.
 - It uses the Action at the commit being tested (`uses: ./`), not a released tag.
 - Three jobs run in parallel, one per README example: `npx firebase-tools`, `FirebaseExtended/action-hosting-deploy`, and `w9jds/firebase-action`. Each deploys to its own preview channel, `demo-<run number>-<example>`, which expires after an hour, so runs never interfere and the live site is never touched.
-- It runs in the `test` environment, which allows any branch, set up with `firebase-wif setup --environment test --any-branch`.
-- `deploy-success` passes only when every deploy succeeded. Deploys skipped for a fork pull request count as passing; any other skip, cancellation, or failure fails it.
+- It runs in the `test` environment, which links to the run's preview channel and allows any branch, set up with `firebase-wif setup --environment test --any-branch`.
+- Runs for the same pull request and example share a concurrency group, so a newer push cancels an older deploy.
+- `deploy-required` passes only when every deploy succeeded. Deploys skipped for a fork pull request count as passing; any other skip, cancellation, or failure fails it.
 
 ## Dependency updates
 
