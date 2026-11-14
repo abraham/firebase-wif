@@ -5,7 +5,11 @@ const firebaseJson: Advisory = {
   id: 'local.firebase-json',
   async run(rt) {
     if (!rt.local) return skipped('no local files provided');
-    return rt.local.firebaseJson ? pass('found') : warn('firebase.json not found', 'Run firebase init in this repo.');
+    const others = Object.keys(rt.local.deployFirebaseJsons ?? {});
+    if (!rt.local.firebaseJson && !others.length)
+      return warn('firebase.json not found', 'Run firebase init in this repo.');
+    if (!others.length) return pass('found');
+    return pass(rt.local.firebaseJson ? `found, plus ${others.join(', ')}` : `found ${others.join(', ')}`);
   },
 };
 

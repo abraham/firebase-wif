@@ -290,6 +290,33 @@ describe('status', () => {
     expect(check(await run(fakes), 'gcp.runtime-sa-user')).toMatchObject({ status: 'skipped' });
   });
 
+  it('expects the functions roles when functions deploy from another firebase.json', async () => {
+    const fakes = createConfiguredFakes({ presets: ['hosting', 'functions'] });
+    const hostingOnly = await run(fakes, { presets: 'auto', local: { firebaseJson: { hosting: {} } } });
+    expect(check(hostingOnly, 'gcp.extra-roles').message).toContain('roles/cloudfunctions.admin');
+
+    const local = {
+      firebaseJson: { hosting: {} },
+      deployFirebaseJsons: { 'packages/server/firebase.json': { functions: [] } },
+    };
+    const report = await run(fakes, { presets: 'auto', local });
+    expect(report.context.presets).toEqual(['hosting', 'functions']);
+    expect(report.context.roles).toEqual(
+      expect.arrayContaining(['roles/cloudfunctions.admin', 'roles/cloudscheduler.admin']),
+    );
+    expect(report.context.apis).toContain('cloudscheduler.googleapis.com');
+    expect(check(report, 'gcp.extra-roles').status).toBe('pass');
+    expect(check(report, 'local.firebase-json').message).toBe('found, plus packages/server/firebase.json');
+
+    const project = fakes.google.state.projects[0]!;
+    project.iamPolicy.bindings = project.iamPolicy.bindings!.filter((b) => b.role !== 'roles/cloudscheduler.admin');
+    const missing = await run(fakes, { presets: 'auto', local });
+    expect(check(missing, 'gcp.project-roles').status).toBe('fail');
+    expect(missing.changes.map((c) => c.description)).toContain(
+      `grant roles/cloudscheduler.admin on demo-project to ${fakes.names.serviceAccount}`,
+    );
+  });
+
   it('turns GitHub changes into manual steps without GitHub credentials', async () => {
     const fakes = createConfiguredFakes();
     vi.stubGlobal('fetch', async (url: string) => {
@@ -982,6 +1009,7 @@ describe('multiple projects', () => {
     const result = applied(await setupWith(fakes, { projectId: STAGING.projectId, presets: ['functions'] }));
     expect(result.applied.map((c) => c.resource)).toEqual([
       'gcp.apis',
+      'gcp.project-roles',
       'gcp.project-roles',
       'gcp.project-roles',
       'gcp.runtime-sa-user',

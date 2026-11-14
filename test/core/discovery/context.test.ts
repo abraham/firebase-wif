@@ -95,6 +95,41 @@ describe('resolveContext', () => {
     expect(resolved.local.firebaserc?.projects?.staging).toBe('demo-staging');
   });
 
+  it('reads firebase.json from the directories workflows deploy from', async () => {
+    const outer = await tempRepo({
+      'outside/firebase.json': JSON.stringify({ storage: {} }),
+      'repo/.git/HEAD': '',
+      'repo/firebase.json': JSON.stringify({ hosting: {} }),
+      'repo/.firebaserc': JSON.stringify({ projects: { default: 'demo-project' } }),
+      'repo/packages/server/firebase.json': JSON.stringify({ functions: [{ source: '.' }] }),
+      'repo/.github/workflows/server.yml': `
+on: push
+jobs:
+  deploy:
+    steps:
+      - run: npx firebase deploy
+      - run: npx firebase deploy
+        working-directory: packages/server
+      - run: npx firebase deploy
+        working-directory: packages/missing
+      - run: npx firebase deploy
+        working-directory: ../outside
+`,
+    });
+    const root = join(outer, 'repo');
+
+    const resolved = await resolveContext({ cwd: root, repo: 'o/r', env: {}, exec: noExec });
+    expect(resolved.local.firebaseJson).toEqual({ hosting: {} });
+    expect(resolved.local.deployFirebaseJsons).toEqual({
+      'packages/server/firebase.json': { functions: [{ source: '.' }] },
+    });
+
+    const server = join(root, 'packages', 'server');
+    const fromServer = await resolveContext({ cwd: server, project: 'p-123456', repo: 'o/r', env: {}, exec: noExec });
+    expect(fromServer.local.firebaseJson).toEqual({ functions: [{ source: '.' }] });
+    expect(fromServer.local.deployFirebaseJsons).toEqual({ 'firebase.json': { hosting: {} } });
+  });
+
   it('resolves aliases and explicit values', async () => {
     const root = await tempRepo({
       '.git/HEAD': '',

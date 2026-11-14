@@ -1,18 +1,18 @@
 # Presets
 
-Code: `src/presets.ts`, `src/core/engine/chain.ts`
+Code: `src/presets.ts`, `src/core/engine/chain.ts`, `src/core/workflow-steps.ts`
 Tests: `test/presets.test.ts`, `test/core/engine/engine.test.ts`
 
 A preset is the set of project roles and APIs the deploy service account needs to deploy one Firebase product. Presets keep a Hosting-only repository at a single role and add only what each product's deploy needs.
 
 ## Presets
 
-| Preset      | `firebase.json` key | Project roles                                                                                                                                    | APIs                                                                  |
-| ----------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
-| `hosting`   | `hosting`           | `roles/firebasehosting.admin`, `roles/serviceusage.serviceUsageConsumer`                                                                         | `firebasehosting`                                                     |
-| `firestore` | `firestore`         | `roles/firebaserules.admin`, `roles/datastore.indexAdmin`, `roles/serviceusage.serviceUsageConsumer`                                             | `firestore`, `firebaserules`                                          |
-| `storage`   | `storage`           | `roles/firebaserules.admin`, `roles/firebasestorage.viewer`, `roles/storage.bucketViewer`, `roles/serviceusage.serviceUsageConsumer`             | `firebasestorage`, `firebaserules`                                    |
-| `functions` | `functions`         | `roles/cloudfunctions.admin`, `roles/serviceusage.serviceUsageConsumer`, plus `roles/iam.serviceAccountUser` on runtime service accounts (below) | `cloudfunctions`, `cloudbuild`, `artifactregistry`, `run`, `eventarc` |
+| Preset      | `firebase.json` key | Project roles                                                                                                                                                                  | APIs                                                                                    |
+| ----------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `hosting`   | `hosting`           | `roles/firebasehosting.admin`, `roles/serviceusage.serviceUsageConsumer`                                                                                                       | `firebasehosting`                                                                       |
+| `firestore` | `firestore`         | `roles/firebaserules.admin`, `roles/datastore.indexAdmin`, `roles/serviceusage.serviceUsageConsumer`                                                                           | `firestore`, `firebaserules`                                                            |
+| `storage`   | `storage`           | `roles/firebaserules.admin`, `roles/firebasestorage.viewer`, `roles/storage.bucketViewer`, `roles/serviceusage.serviceUsageConsumer`                                           | `firebasestorage`, `firebaserules`                                                      |
+| `functions` | `functions`         | `roles/cloudfunctions.admin`, `roles/cloudscheduler.admin`, `roles/serviceusage.serviceUsageConsumer`, plus `roles/iam.serviceAccountUser` on runtime service accounts (below) | `cloudfunctions`, `cloudbuild`, `artifactregistry`, `run`, `eventarc`, `cloudscheduler` |
 
 Every API name ends in `.googleapis.com`. The trust chain itself always needs `iam`, `iamcredentials`, `sts`, and `cloudresourcemanager` (`BASE_APIS`), whatever is deployed.
 
@@ -21,12 +21,13 @@ Why some roles are there:
 - `roles/firebasehosting.admin` covers both live and preview channel deploys.
 - `roles/serviceusage.serviceUsageConsumer` is in every preset because `firebase-tools` checks that each product's API is enabled when it deploys (for Hosting, since `firebase-tools` 15.34.1).
 - `storage` includes `roles/storage.bucketViewer` because the Storage rules deploy looks up the default bucket (firebase/firebase-tools#6593).
+- `functions` includes `roles/cloudscheduler.admin` because deploying scheduled functions (`onSchedule`) creates and updates their Cloud Scheduler jobs, and fails with a 403 on `cloudscheduler.jobs.update` without it. It enables the Cloud Scheduler API too, because the deploy account can't enable APIs itself.
 
 ## Choosing presets
 
-With `presets: 'auto'`, the default, presets come from the top-level keys of `firebase.json`: each preset whose key is present, in the order of the table. With no `firebase.json`, or none of those keys, the preset is `hosting`. Passing presets explicitly replaces this.
+With `presets: 'auto'`, the default, presets come from the top-level keys of `firebase.json`, and of any other `firebase.json` in a directory a workflow deploys from (`deployFirebaseJsons`, see `context-and-credentials.md`), so a monorepo that deploys functions from `packages/server` gets the `functions` preset: each preset whose key is present in any of them, in the order of the table. With no `firebase.json`, or none of those keys, the preset is `hosting`. Passing presets explicitly replaces this.
 
-Any other role goes through `roles` (`--role`), on top of the presets. For example, scheduled functions also need `--role roles/cloudscheduler.admin`, and products without a preset (Realtime Database, Remote Config, Extensions, App Hosting) are covered by their roles.
+Any other role goes through `roles` (`--role`), on top of the presets. For example, products without a preset (Realtime Database, Remote Config, Extensions, App Hosting) are covered by their roles.
 
 `rolesFor({ presets, roles })` returns the presets' roles plus the extra roles, deduplicated and sorted. `apisFor(presets)` returns `BASE_APIS` plus the presets' APIs, deduplicated and sorted. Both accept readonly arrays. `isPresetName(name)` is a type guard for validating user input.
 
@@ -49,5 +50,6 @@ Preset names are public API. Changing a preset's roles or APIs isn't a breaking 
 
 ## How it's tested
 
-- `test/presets.test.ts` checks every preset has roles and well-formed API names, that no preset grants `roles/iam.serviceAccountUser`, preset resolution from `firebase.json`, that Hosting stays at one role, and deduplication and sorting.
-- `test/core/engine/engine.test.ts` checks the resolved roles and APIs in a run, and the runtime service account grant for the `functions` preset.
+- `test/presets.test.ts` checks every preset has roles and well-formed API names, that no preset grants `roles/iam.serviceAccountUser`, preset resolution from one or more `firebase.json` files, that Hosting stays at one role, and deduplication and sorting.
+- `test/core/engine/engine.test.ts` checks the resolved roles and APIs in a run, the `functions` roles when functions deploy from another `firebase.json`, and the runtime service account grant for the `functions` preset.
+- `test/core/workflow-steps.test.ts` checks the directories deploy steps run in.

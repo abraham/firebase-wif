@@ -18,6 +18,11 @@ export type PresetName = 'hosting' | 'firestore' | 'storage' | 'functions';
 /** Files read by `resolveContext`; the engine never touches the filesystem itself. */
 export interface LocalFiles {
   firebaseJson?: Record<string, unknown> | undefined;
+  /**
+   * Other `firebase.json` files in the directories workflows deploy from, keyed by path from the git root,
+   * like `packages/server/firebase.json`. Their products count toward `'auto'` presets.
+   */
+  deployFirebaseJsons?: Record<string, Record<string, unknown>> | undefined;
   firebaserc?: { projects?: Record<string, string> | undefined } | undefined;
   gitignore?: string | undefined;
   /** Workflow file contents keyed by path, like `.github/workflows/deploy.yml`. */

@@ -38,22 +38,31 @@ export const PRESETS: Readonly<Record<PresetName, Preset>> = {
     apis: ['firebasestorage.googleapis.com', 'firebaserules.googleapis.com'],
   },
   functions: {
-    roles: ['roles/cloudfunctions.admin', 'roles/serviceusage.serviceUsageConsumer'],
+    roles: [
+      'roles/cloudfunctions.admin',
+      // Scheduled functions (onSchedule) create and update Cloud Scheduler jobs.
+      'roles/cloudscheduler.admin',
+      'roles/serviceusage.serviceUsageConsumer',
+    ],
     apis: [
       'cloudfunctions.googleapis.com',
       'cloudbuild.googleapis.com',
       'artifactregistry.googleapis.com',
       'run.googleapis.com',
       'eventarc.googleapis.com',
+      // The deploy account can't enable APIs, and firebase-tools needs this one for scheduled functions.
+      'cloudscheduler.googleapis.com',
     ],
   },
 };
 
 export const SERVICE_ACCOUNT_USER_ROLE = 'roles/iam.serviceAccountUser';
 
-/** Presets for the products configured in `firebase.json`, or `hosting` when there are none. */
-export const resolvePresets = (firebaseJson?: Record<string, unknown> | undefined): PresetName[] => {
-  const found = PRESET_NAMES.filter((name) => firebaseJson && name in firebaseJson);
+/** Presets for the products configured in any of the `firebase.json` files, or `hosting` when there are none. */
+export const resolvePresets = (...firebaseJsons: (Record<string, unknown> | undefined)[]): PresetName[] => {
+  const found = PRESET_NAMES.filter((name) =>
+    firebaseJsons.some((firebaseJson) => firebaseJson && name in firebaseJson),
+  );
   return found.length ? found : ['hosting'];
 };
 

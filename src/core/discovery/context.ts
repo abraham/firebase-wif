@@ -2,7 +2,7 @@ import { join, resolve } from 'node:path';
 import { FirebaseWifError } from '../errors.js';
 import type { LocalFiles } from '../types.js';
 import { defaultExec, type Exec } from './exec.js';
-import { findFirebaseFiles, readText, readWorkflows } from './files.js';
+import { findFirebaseFiles, readDeployFirebaseJsons, readText, readWorkflows } from './files.js';
 
 export interface ResolvedContext {
   projectId: string;
@@ -133,14 +133,21 @@ export const resolveContext = async ({
   }
 
   const root = gitRoot ?? firebaseDir ?? start;
+  const workflows = await readWorkflows(root);
+  const deployFirebaseJsons = await readDeployFirebaseJsons(
+    root,
+    workflows,
+    firebaseDir && join(firebaseDir, 'firebase.json'),
+  );
   return {
     projectId,
     repo: repoName,
     local: {
       firebaseJson,
+      ...(Object.keys(deployFirebaseJsons).length ? { deployFirebaseJsons } : {}),
       firebaserc,
       gitignore: await readText(join(root, '.gitignore')),
-      workflows: await readWorkflows(root),
+      workflows,
     },
     sources: { projectId: projectSource, repo: repoSource },
     firebaseDir,

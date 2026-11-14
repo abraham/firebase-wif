@@ -31,6 +31,15 @@ describe('resolvePresets', () => {
     expect(resolvePresets({ emulators: {} })).toEqual(['hosting']);
     expect(resolvePresets({ functions: {}, hosting: {}, emulators: {} })).toEqual(['hosting', 'functions']);
   });
+
+  it('combines several firebase.json files', () => {
+    expect(resolvePresets({ hosting: {} }, undefined, { functions: [], firestore: {} })).toEqual([
+      'hosting',
+      'firestore',
+      'functions',
+    ]);
+    expect(resolvePresets(undefined, { functions: {} })).toEqual(['functions']);
+  });
 });
 
 describe('isPresetName', () => {

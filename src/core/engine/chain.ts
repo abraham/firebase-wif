@@ -114,7 +114,9 @@ export const buildContext = (
 
   const presets =
     options.presets === undefined || options.presets === 'auto'
-      ? resolvePresets(options.firebaseJson ?? options.local?.firebaseJson)
+      ? options.firebaseJson
+        ? resolvePresets(options.firebaseJson)
+        : resolvePresets(options.local?.firebaseJson, ...Object.values(options.local?.deployFirebaseJsons ?? {}))
       : options.presets.map((name) => {
           if (!PRESET_NAMES.includes(name)) throw new FirebaseWifError('INVALID_NAME', `Unknown preset "${name}".`);
           return name;

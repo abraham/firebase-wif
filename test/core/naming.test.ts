@@ -111,7 +111,7 @@ describe('service accounts', () => {
 describe('labels', () => {
   it('names roles in plain language', () => {
     expect(roleLabel('roles/datastore.indexAdmin')).toBe('Firestore index admin');
-    expect(roleLabel('roles/cloudscheduler.admin')).toBe('cloudscheduler admin');
+    expect(roleLabel('roles/pubsub.admin')).toBe('pubsub admin');
     expect(roleLabel('projects/demo-project/roles/deployBot')).toBe('deploy bot');
   });
 

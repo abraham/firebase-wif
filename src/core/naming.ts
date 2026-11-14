@@ -92,6 +92,7 @@ export const defaultAppEngineServiceAccount = (projectId: string): string => `${
 
 const ROLE_LABELS: Record<string, string> = {
   'roles/cloudfunctions.admin': 'Cloud Functions admin',
+  'roles/cloudscheduler.admin': 'Cloud Scheduler admin',
   'roles/datastore.indexAdmin': 'Firestore index admin',
   'roles/firebasehosting.admin': 'Firebase Hosting admin',
   'roles/firebaserules.admin': 'Firebase Rules admin',
