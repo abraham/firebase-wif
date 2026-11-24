@@ -10,7 +10,7 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-node@v7.1.0'
         - 'firebaseextended/action-hosting-deploy@v0.11.0'
-        - 'w9jds/firebase-action@v15.36.0'
+        - 'w9jds/firebase-action@v15.37.0'
     '.github/workflows/publish.yaml':
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-node@v7.1.0'
@@ -30,8 +30,8 @@ dependencies:
         commit: 'sha1-500ac625ca2dd40cbd15f7659af953801858032a'
         owner_id: 42357678
         repo_id: 290288569
-    'w9jds/firebase-action@v15.36.0':
-        ref: 'v15.36.0'
-        commit: 'sha1-4cdc4914d02e1044478456e9d0f87118e13541d9'
+    'w9jds/firebase-action@v15.37.0':
+        ref: 'v15.37.0'
+        commit: 'sha1-e01972352bce28ca4658ce13d6abefd26053a4e2'
         owner_id: 164540
         repo_id: 159878508
