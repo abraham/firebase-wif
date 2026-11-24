@@ -58,7 +58,7 @@ jobs:
           entryPoint: demo
 
       - if: matrix.example == 'firebase-action'
-        uses: w9jds/firebase-action@v15.36.0
+        uses: w9jds/firebase-action@v15.37.0
         with:
           args: hosting:channel:deploy ${{ env.CHANNEL }} --expires 1h
         env:
